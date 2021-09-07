@@ -4,21 +4,9 @@ import sys
 import torch
 import torch.nn as nn
 
-from utils import compose, read_book
-from text_classif_tests import clean_extra_spaces, clean_html, lower, tokenize, TextIndexer, \
-    spacy_tokenizer, UNK, CUSTOM_E_DIM, \
+from utils import read_book
+from text_classif_tests import simple_cleanup, as_indices_fn, sub_unknown_fn, spacy_tokenizer, UNK, CUSTOM_E_DIM, \
     PerceptronOverCombinedWordEmbeddings, Perceptron, StupidSentenceEmbedding
-
-
-def sub_if_unk(word, voc):
-    if word in voc:
-        return word
-    else:
-        return UNK
-
-
-def sub_unk(inst, voc):
-    return {'words': [sub_if_unk(word, voc) for word in inst['words']]}
 
 
 parser = argparse.ArgumentParser(description='Load and run the stupid classifier on a text read from stdin')
@@ -28,15 +16,12 @@ parser.add_argument("--path", help="path to the repository containing the weight
 
 args = parser.parse_args()
 in_voc = read_book(args.path, args.prefix)
-
-indexer = TextIndexer(in_voc)
-
+indexer = as_indices_fn(in_voc)
+sub_unknown = sub_unknown_fn(in_voc, unk=UNK)
 spc_tok = spacy_tokenizer()
-prepare = compose(indexer, lambda t: sub_unk(t, in_voc), lambda i: tokenize(i, spc_tok),
-                  clean_html, clean_extra_spaces, lower)
 
 in_text = sys.stdin.read()
-in_text = prepare({"text": in_text})
+x = torch.as_tensor(indexer(sub_unknown(spc_tok(simple_cleanup(in_text))))).unsqueeze(0)
 
 stupid = PerceptronOverCombinedWordEmbeddings(nn.Embedding(len(in_voc), CUSTOM_E_DIM), StupidSentenceEmbedding(),
                                               Perceptron(CUSTOM_E_DIM))
@@ -44,7 +29,7 @@ stupid = PerceptronOverCombinedWordEmbeddings(nn.Embedding(len(in_voc), CUSTOM_E
 stupid.load_state_dict(torch.load(f"{os.path.join(args.path, args.prefix)}.wgt"))
 stupid.eval()
 
-score = stupid(in_text['x'].unsqueeze(0), torch.ones(1, len(in_text['x'])))
+score = stupid(x, torch.ones(1, len(x[0])))
 
 print(torch.sign(score > 0).long().squeeze().item())
 
