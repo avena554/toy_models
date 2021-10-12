@@ -17,7 +17,7 @@ PAD = "<#>"
 SAVE_PATH = "saved_models"
 MODEL_NAME = "stupid"
 SEED = 42
-CUSTOM_E_DIM = 1024
+CUSTOM_E_DIM = 128
 ID = nn.Identity()
 
 
@@ -25,7 +25,8 @@ torch_device = "cuda"
 truncate_corpus = False
 corpus_size = 1000
 lr = 1e-3
-b_size = 64
+b_size = 2
+n_epochs = 6
 dev_split_proportion = 0.25
 
 tag_re = re.compile("</?\\w+(?:\\s+\\w+=\"[^\\s\"]+\")*\\s*/?>")
@@ -142,6 +143,10 @@ def pad_batch(instances, voc, x_key="x", y_key="y", m_key="mask"):
     return batch
 
 
+def mask_embeddings(w_es, masks):
+    return w_es * masks.unsqueeze(2)
+
+
 class Perceptron(nn.Module):
 
     def __init__(self, in_s, nl=ID):
@@ -150,36 +155,134 @@ class Perceptron(nn.Module):
         self.n_lin = nl
         self.lin = nn.Linear(in_s, 1)
 
-    def forward(self, x, *args, **kargs):
+    def forward(self, x):
         h = self.lin(x)
         out = self.n_lin(h)
         return out
 
 
-class StupidSentenceEmbedding(nn.Module):
+class StupidWeights(nn.Module):
 
-    def __init__(self):
-        super(StupidSentenceEmbedding, self).__init__()
+    def __init__(self, pad_index, to_device):
+        super(StupidWeights, self).__init__()
+        self.to_device = to_device
+        self.pad_index = torch.tensor(pad_index)
 
-    def forward(self, w_es, masks):
-        masked_w_es = w_es * masks.unsqueeze(2)
-        s_lengths = torch.sum(masks, dim=1).unsqueeze(1)
-        mean_e = torch.sum(masked_w_es, dim=1)/s_lengths
-        return mean_e
+    def forward(self, indices, w_es):
+        weights = torch.ne(indices, self.to_device(self.pad_index))
+        s_lengths = torch.sum(weights, dim=1).unsqueeze(1)
+        weights = weights/s_lengths
+        return weights
 
 
-class PerceptronOverCombinedWordEmbeddings(nn.Module):
+class FFAttentionWeights(nn.Module):
+
+    def __init__(self, in_s, nl_factory=nn.Tanh):
+        super(FFAttentionWeights, self).__init__()
+        self.in_s = in_s
+        self.score_lin = nn.Linear(self.in_s, 1)
+        self.score_nl = nl_factory()
+        self.score_tfm = nn.Sequential(self.score_lin, self.score_nl)
+        self.norm = nn.Softmax(dim=1)
+
+    def forward(self, indices, w_es):
+        # has shape batch_size, seq_length
+        scores = self.score_tfm(w_es).squeeze(2)
+        return self.norm(scores)
+
+
+class DotProductAttentionWeights(nn.Module):
+
+    def __init__(self, in_s):
+        super(DotProductAttentionWeights, self).__init__()
+        self.in_s = in_s
+        self.key_p = torch.nn.Parameter(torch.zeros(in_s, dtype=torch.float))
+        self.query_tfm = torch.nn.Linear(in_s, in_s)
+        self.norm = nn.Softmax(dim=1)
+
+    def forward(self, indices, w_es):
+        # has shape batch_size, seq_length, in_s, 1
+        query = self.query_tfm(w_es).unsqueeze(3)
+        # has shape 1, in_s
+        key = self.key_p.unsqueeze(0)
+        # has shape batch_size, seq_length
+        scores = (torch.matmul(key, query)/np.sqrt(self.in_s)).squeeze(2, 3)
+        return self.norm(scores)
+
+
+class TfidfWeights:
+
+    def __init__(self, tfidf_vectorizer, to_device):
+        self.v = tfidf_vectorizer
+        self.to_device = to_device
+
+    def __call__(self, indices, w_es):
+        tfidf_m = self.v.transform(indices).toarray()
+        s = indices.shape
+        weights = torch.zeros(*s, dtype=torch.float, requires_grad=False)
+        for i in range(s[0]):
+            for j in range(s[1]):
+                weights = tfidf_m[i][indices[i][j]]
+
+        return self.to_device(weights)
+
+
+class WeightedAverage(nn.Module):
+
+    def __init__(self, weighting_scheme):
+        super(WeightedAverage, self).__init__()
+        self.weighting_scheme = weighting_scheme
+
+    def forward(self, indices, w_es):
+        weights = self.weighting_scheme(indices, w_es).unsqueeze(2)
+        average = torch.sum(weights * w_es, dim=1)
+        return average, weights
+
+
+def one_hot(index, voc_size):
+    oh = torch.zeros(voc_size)
+    oh[index] = 1
+    return oh
+
+
+class OneHotWeightedAverage(nn.Module):
+
+    def __init__(self, weighting_scheme, to_device):
+        super(OneHotWeightedAverage, self).__init__()
+        self.weighting_scheme = weighting_scheme
+        self.to_device = to_device
+
+    def forward(self, indices, w_es):
+        (batch_size, voc_size) = indices.shape
+        # shape batch_size * seq_length
+        weights = self.weighting_scheme(indices, w_es)
+        # shape seq_length * batch_size
+        weights = torch.transpose(weights, 0, 1)
+        average = self.to_device(torch.zeros(batch_size, voc_size), dtype=torch.float)
+        for i in range(voc_size):
+            # tmp is batch_size * voc_size
+            tmp = self.to_device(torch.stack(
+                [one_hot(indices[b][i].item(), voc_size) for b in range(batch_size)],
+                dim=0
+            ))
+            # append a batch_size * voc_size tensor to average
+            average += weights[i].unsqueeze(1) * tmp
+        return average, weights
+
+
+class BOWModel(nn.Module):
 
     def __init__(self, embedding, composition, perceptron):
-        super(PerceptronOverCombinedWordEmbeddings, self).__init__()
+        super(BOWModel, self).__init__()
         self.perceptron = perceptron
         self.embedding = embedding
         self.composition = composition
 
-    def forward(self, x, mask):
-        e = self.embedding(x)
-        s = self.composition(e, mask)
-        return self.perceptron(s)
+    def forward(self, indices, masks):
+        w_es = self.embedding(indices)
+        masked_w_es = mask_embeddings(w_es, masks)
+        s_e, composition_weights = self.composition(indices, masked_w_es)
+        return self.perceptron(s_e), composition_weights
 
 
 def move_to_device(batch, device, keys):
@@ -198,7 +301,7 @@ def train_bow(model, loss, optimizer, dataloader, epochs, device="cpu", epoch_ev
             n_instances += len(batch['x'])
             n_batches += 1
 
-            logits = model.forward(x, masks)
+            logits, composition_weights = model.forward(x, masks)
             batch_loss = loss(logits, y)
 
             optimizer.zero_grad()
@@ -287,7 +390,7 @@ def test_bow(model, measure, dataloader, device):
     measure.reset()
     for batch in dataloader:
         x, y, masks = move_to_device(batch, device, ['x', 'y', 'mask'])
-        logits = model.forward(x, masks)
+        logits, composition_weights = model.forward(x, masks)
         measure.collect_batch(logits, y)
 
 
@@ -299,10 +402,13 @@ def iter_by_key(dataset, key):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='train a simple binary classifier on the IMDB dataset')
-    parser.add_argument("--input-type", dest="input", help="type of input (tf-idf | glove | learned)",
+    parser.add_argument("--embedding-type", dest="input", help="type of input (one-hot | glove | learned)",
                         default="learned")
     parser.add_argument("--model-type", dest="model", help="model type (perceptron | linear svm | svm)",
                         default="perceptron")
+    parser.add_argument("--sentence-composition", dest="composition",
+                        help="composition type (naive | ff_attention |  sdp_attention | tf-idf)",
+                        default="naive")
 
     args = parser.parse_args()
 
@@ -342,19 +448,7 @@ if __name__ == "__main__":
     train = train.map(preprocess_train)
     test = test.map(preprocess_test)
 
-    if args.input == "tf-idf":
-
-        vectorizer = TfidfVectorizer(vocabulary=voc_train, tokenizer=spc_tok, token_pattern=None, dtype=np.float32)
-        vectorizer.fit(iter_by_key(train, "cleaned_text"))
-        # add the document vector to each instance
-
-        def as_tfidf_vector(t):
-            x = vectorizer.transform([t])
-            return torch.as_tensor(x.toarray()[0])
-
-        add_x = InstanceUpdate("cleaned_text", "x", as_tfidf_vector)
-    else:
-        add_x = InstanceUpdate("words", "x", compose(torch.as_tensor, as_indices_fn(voc_train)))
+    add_x = InstanceUpdate("words", "x", compose(torch.as_tensor, as_indices_fn(voc_train)))
 
     dev = None
     if dev_split_proportion > 0:
@@ -388,14 +482,54 @@ if __name__ == "__main__":
                              pin_memory=True)
 
     # model
-    if args.model == "perceptron" and args.input == "learned":
-        bow_model = PerceptronOverCombinedWordEmbeddings(nn.Embedding(len(voc_train), CUSTOM_E_DIM),
-                                                         StupidSentenceEmbedding(), Perceptron(CUSTOM_E_DIM))
-    elif args.model == "perceptron" and args.input == "tf-idf":
-        bow_model = Perceptron(len(voc_train))
+    composition_layer_factory = WeightedAverage
+    # word embedding type
+    if args.input == "one-hot":
+        h_size = len(voc_train)
+
+        # leave embeddings as is (that is indices)
+        # because one-hot stuff takes too much space
+        e_layer = ID
+
+        # so, need to use a special averaging class to handle the 'implicit' one-hot repr
+        def composition_layer_factory(ws):
+            return OneHotWeightedAverage(ws, lambda x: x.to(torch_device))
+
+    elif args.input == "learned":
+        h_size = CUSTOM_E_DIM
+        e_layer = nn.Embedding(len(voc_train), CUSTOM_E_DIM)
 
     else:
         raise NotImplementedError
+
+    # words weighting scheme
+    if args.composition == "naive":
+        weights_scheme = StupidWeights(voc_train[PAD], lambda x: x.to(torch_device))
+
+    elif args.composition == "ff_attention":
+        weights_scheme = FFAttentionWeights(CUSTOM_E_DIM)
+
+    elif args.composition == "sdp_attention":
+        weights_scheme = DotProductAttentionWeights(CUSTOM_E_DIM)
+
+    elif args.composition == "tf-idf":
+        vectorizer = TfidfVectorizer(vocabulary=voc_train, tokenizer=spc_tok, token_pattern=None, dtype=np.float32)
+        vectorizer.fit(iter_by_key(train, "cleaned_text"))
+        weights_scheme = TfidfWeights(vectorizer, lambda x: x.to(torch_device))
+
+    else:
+        raise ValueError("{:s} is not a known composition method ".format(args.composition))
+
+    composition_fn = composition_layer_factory(weights_scheme)
+
+    # output layer
+    if args.model == "perceptron":
+        m_type = Perceptron
+
+    else:
+        raise NotImplementedError
+
+    bow_model = BOWModel(e_layer, composition_fn, m_type(h_size))
     # move to gpu
     bow_model.to(torch_device)
     # loss function
@@ -415,7 +549,7 @@ if __name__ == "__main__":
     adam_opt = torch.optim.Adam(bow_model.parameters(), lr=lr)
 
     print(f"vocabulary size: {len(voc_train):d}")
-    train_bow(bow_model, per_loss, adam_opt, train_loader, 10, device=torch_device, epoch_evaluation=eval_on_dev)
+    train_bow(bow_model, per_loss, adam_opt, train_loader, n_epochs, device=torch_device, epoch_evaluation=eval_on_dev)
     torch.save(bow_model.state_dict(), os.path.join(SAVE_PATH, f"{MODEL_NAME}.wgt"))
     write_book(voc_train, SAVE_PATH, MODEL_NAME)
 
