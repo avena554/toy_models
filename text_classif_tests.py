@@ -22,7 +22,7 @@ ID = nn.Identity()
 
 
 torch_device = "cuda"
-truncate_corpus = False
+truncate_corpus = True
 corpus_size = 1000
 lr = 1e-3
 b_size = 2
@@ -258,7 +258,7 @@ class OneHotWeightedAverage(nn.Module):
         weights = self.weighting_scheme(indices, w_es)
         # shape seq_length * batch_size
         weights = torch.transpose(weights, 0, 1)
-        average = self.to_device(torch.zeros(batch_size, voc_size), dtype=torch.float)
+        average = self.to_device(torch.zeros(batch_size, voc_size, dtype=torch.float))
         for i in range(voc_size):
             # tmp is batch_size * voc_size
             tmp = self.to_device(torch.stack(
@@ -489,7 +489,8 @@ if __name__ == "__main__":
 
         # leave embeddings as is (that is indices)
         # because one-hot stuff takes too much space
-        e_layer = ID
+        def e_layer(indices):
+            return indices.unsqueeze(2)
 
         # so, need to use a special averaging class to handle the 'implicit' one-hot repr
         def composition_layer_factory(ws):
