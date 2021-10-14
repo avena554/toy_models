@@ -23,7 +23,7 @@ ID = nn.Identity()
 
 
 torch_device = "cuda"
-truncate_corpus = True
+truncate_corpus = False
 corpus_size = 100
 lr = 1e-3
 b_size = 64
@@ -224,12 +224,12 @@ def extract_tf(batch_oc):
     return batch_oc / batch_oc.sum(dim=1, keepdim=True)
 
 
-def extract_idf(instance, df_oc, n_docs):
+def extract_idf(instance, voc, df_oc, n_docs):
     batch_ttype_seq = instance['x']
     batch_size, m_len = batch_ttype_seq.shape
     batch_idf = np.array(
-        [[np.log(n_docs + 1) - np.log(df_oc[idx.item()]) for idx in batch_ttype_seq[b]] for b in range(batch_size)],
-        dtype='i'
+        [[np.log(n_docs + 1) - np.log(df_oc[voc.values[idx.item()]] + 1) for idx in batch_ttype_seq[b]] for b in range(batch_size)],
+        dtype='f'
     )
     return batch_idf
 
@@ -247,16 +247,17 @@ class TfWeights(nn.Module):
 
 class TfidfWeights(nn.Module):
 
-    def __init__(self, tf_weights, df_oc, n_docs, to_device):
+    def __init__(self, tf_weights, voc,  df_oc, n_docs, to_device):
         super(TfidfWeights, self).__init__()
         self.df_oc = df_oc
         self.n_docs = n_docs
         self.tf_weights = tf_weights
         self.to_device = to_device
+        self.voc = voc
 
     def forward(self, w_es, instance):
         weights = self.tf_weights(w_es, instance)
-        idf_batch = extract_idf(instance, self.df_oc, self.n_docs)
+        idf_batch = extract_idf(instance, self.voc, self.df_oc, self.n_docs)
         idf_batch = self.to_device(torch.from_numpy(idf_batch))
         tfidf_weights = weights * idf_batch
         return tfidf_weights
@@ -572,14 +573,8 @@ if __name__ == "__main__":
                                                     one_hot_input=use_one_hot, to_device=lambda x: x.to(torch_device))
 
     elif args.composition == "tf-idf":
-        # vector of idf for each voc lexeme
-        idf_train = np.array(
-            [np.log(n_docs_train + 1) - np.log(d_oc[voc_train.values[i]] + 1) for i in range(len(voc_train))],
-            dtype='f')
-        idf_train = torch.from_numpy(idf_train)
-
-        idfs = idf_train.to(torch_device)
-        weights_scheme = TfidfWeights(TfWeights(voc_train, lambda x: x.to(torch_device)), idfs, n_docs=n_docs_train,
+        weights_scheme = TfidfWeights(TfWeights(voc_train, lambda x: x.to(torch_device)),
+                                      voc_train, d_oc, n_docs=n_docs_train,
                                       to_device=lambda x: x.to(torch_device))
 
     else:
