@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 from utils import read_book
 from text_classif_tests import simple_cleanup, as_indices_fn, sub_unknown_fn, spacy_tokenizer, UNK, CUSTOM_E_DIM, \
-    BOWModel, Perceptron, StupidSentenceEmbedding, \
+    BowModel, Perceptron, StupidSentenceEmbedding, \
     AttentionSentenceEmbedding, DotProductAttentionSentenceEmbedding
 
 
@@ -40,7 +40,7 @@ attention_layer = DotProductAttentionSentenceEmbedding(CUSTOM_E_DIM)
 ww = AttentionHook()
 attention_layer.norm.register_forward_hook(ww)
 
-stupid = BOWModel(nn.Embedding(len(in_voc), CUSTOM_E_DIM),
+stupid = BowModel(nn.Embedding(len(in_voc), CUSTOM_E_DIM),
                   attention_layer,
                   Perceptron(CUSTOM_E_DIM))
 
