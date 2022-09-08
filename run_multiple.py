@@ -1,3 +1,4 @@
+import torch
 from torch.optim import Adam
 import argparse
 import os
@@ -9,9 +10,11 @@ from text_classif_tests import run_one, preprocess, make_dataloader, build_model
 def run_multi(train, dev, test, voc, df_oc, embeddings, n_docs_train, configs, times, measure, store_action, device,
               optimizer_type=Adam):
     for i, (config, n) in enumerate(zip(configs, times)):
+        torch.manual_seed(SEED)
         train_dl, dev_dl, test_dl = make_dataloader(voc, train, dev, test, config)
-        model, loss = build_model(config, voc, df_oc, device, n_docs_train, embeddings=embeddings)
         for j in range(n):
+            # need to be in the loop for random initialization of weights to be redone each iteration
+            model, loss = build_model(config, voc, df_oc, device, n_docs_train, embeddings=embeddings)
             print("running {:s}...".format(config.model_name))
             run_one(train_dl, dev_dl, test_dl, model, loss, measure, device, config, optimizer_type)
             store_action(i + 1, j + 1, measure.value())

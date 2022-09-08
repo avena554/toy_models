@@ -1,12 +1,14 @@
---embedding-type one-hot --truncate --trunc-size=100 --model-name one-hot_tf
-5
---embedding-type one-hot --truncate --trunc-size=100 --sentence-composition=tf-idf --model-name one-hot_tf-idf
-5
---embedding-type one-hot --truncate --trunc-size=100 --sentence-composition=attention --model-name one-hot_attention
-5
---embedding-type learned --truncate --trunc-size=100 --sentence-composition=tf --model-name learned_tf
-5
---embedding-type learned --truncate --trunc-size=100 --sentence-composition=tf-idf --model-name learned_tf-idf
-5
---embedding-type learned --truncate --trunc-size=100 --sentence-composition=attention --model-name learned_attention
-5
+--embedding-type one-hot --sentence-composition ones --model-name one-hot_ones
+10
+--embedding-type one-hot --sentence-composition tf --model-name one-hot_tf
+10
+--embedding-type one-hot --sentence-composition tf-idf --model-name one-hot_tf-idf
+10
+--embedding-type one-hot --sentence-composition ones --model-name learned_ones
+10
+--embedding-type learned --sentence-composition tf --model-name learned_tf
+10
+--embedding-type learned --sentence-composition tf-idf --model-name learned_tf-idf
+10
+--embedding-type learned --sentence-composition attention --model-name learned_attention
+10

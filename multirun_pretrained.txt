@@ -1,0 +1,8 @@
+--embedding-type learned --sentence-composition=ones --model-name pretrained_ones
+10
+--embedding-type learned --sentence-composition=tf --model-name pretrained_tf
+10
+--embedding-type learned --sentence-composition=tf-idf --model-name pretrained_tf-idf
+10
+--embedding-type learned --sentence-composition=attention --model-name pretrained_attention
+10

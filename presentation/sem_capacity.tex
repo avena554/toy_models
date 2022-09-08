@@ -1,0 +1,1068 @@
+\documentclass{beamer}
+
+%\usepackage{listings}
+%\usepackage[francais]{babel}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+%\usepackage{MyriadPro}
+%\usepackage{cabin}
+\usepackage{graphicx}
+\usepackage{array}
+\usepackage{tikz}
+\usetikzlibrary{positioning, backgrounds, shapes, chains, arrows, decorations.pathmorphing}
+
+\usepackage{forest}
+
+\usepackage{amsmath,amsthm,amssymb}  
+\usepackage{stmaryrd}
+%\usepackage{mdsymbol}
+\usepackage{MnSymbol}
+\usepackage{xcolor}
+\usepackage{verbatim}
+\usepackage{array}
+\usepackage{gb4e}
+%\usepackage{csquotes}
+
+\usepackage{cancel}
+
+
+
+\usepackage[absolute,overlay]{textpos}
+%\usepackage[texcoord,
+%grid,gridcolor=red!10,subgridcolor=green!10,gridunit=pt]
+%{eso-pic}
+
+
+
+%\useoutertheme{infolines}
+\usetheme{focus}
+
+\newcommand{\hidden}[1]{}
+
+%colors
+\definecolor{darkgreen}{rgb}{0,0.5,0}
+\usebeamercolor{block title}
+\definecolor{beamerblue}{named}{fg}
+\usebeamercolor{alert block title}
+\definecolor{beamealert}{named}{fg}
+
+\renewcommand{\colon}{\!:\!}
+
+
+\newcommand\paraitem{%
+ \quad
+ \makebox[\labelwidth][r]{%
+ \makelabel{%
+ \usebeamertemplate{itemize \beameritemnestingprefix item}}}\hskip\labelsep}
+
+\newcommand{\mmid}{\mathbin{{\mid}{\mid}}}
+
+
+%tikz stuff
+
+\begin{document}
+
+\title{Semantic expressive capacity with bounded memory} 
+\author{Antoine Venant}
+\institute{Saarland University}
+\date{\today \\ \vspace{1cm} \\ joint work with Alexander Koller}
+\maketitle
+
+\begin{frame}\frametitle{Semantic interpretation}
+    Linguistic expression $\Rightarrow$ (formal) meaning representation.\\ Representations can be logical formulae, or graphs (AMR [Banarescu \& all 2013], MRS [Copestake \& all 2005]).
+    \begin{center}
+      \begin{tikzpicture}[g/.style = {draw, circle, black}]     
+        \node[rectangle] (s) at (0,0) {\small Morgane wants to sleep};
+        \node (t) at (2,0) {};
+        \begin{scope}[xshift = 4cm, yshift=0.35cm]
+          \node[g] (v) at (1.25,1.25) {};
+          \path (v) edge[loop above] node[above] {\small $\mathsf{want}$} (v);
+          \node[g] (m) at (0.5,0) {};
+          \path (m) edge[loop left] node[above] {\small $\mathsf{Morgane}$} (m);
+          \node[g] (d) at (2,0) {};
+          \path (d) edge[loop right] node[above] {\small $\mathsf{sleep}$} (d);
+          \path (v) edge[->] node[left, midway] (ref) {\small $\mathsf{a}_0$} (m);
+          \path (v) edge[->] node[right, midway] {\small $\mathsf{a}_1$} (d);
+          \path (d) edge[->] node[above] (a0) {\small $\mathsf{a}_0$} (m);
+        \end{scope}
+        \node[xshift=-1.75cm] (ref2) at (ref) {};
+        \path (s.east) edge[double, ->] (ref2);
+        
+        \node[yshift = -2cm] (ref3) at (ref2) {};
+        \node[yshift=-1.5cm, xshift=0.75cm] (l) at (a0) {\small $\mathsf{Morgane}(x) \wedge \mathsf{want}(e, x, \mathsf{sleep}(e', x))$};
+        \path (s.east) edge[double, ->] (ref3);
+      \end{tikzpicture}
+    \end{center}
+
+    \begin{itemize} 
+    \item Consensual approach: semantic interpretation is a \emph{compositional} process, guided by syntax.
+  \end{itemize}
+  
+\end{frame}
+
+\begin{frame}{Principle of compositionality}
+  \begin{block}{Statement}
+    ``The meaning of a complex expression is a \textbf{function} of the meaning of its parts and the \textbf{syntactic rule} that combines them.''
+  \end{block}
+
+  \begin{block}{Requires:}
+    \begin{itemize}
+    \item A syntax tree, along which semantic construction is performed in a bottom-up fashion.
+    \item Operators for semantic composition (semantic algebra).
+    \end{itemize}
+  \end{block}
+
+  \begin{itemize}
+  \item \alert{Which semantic interpretation functions can we express \emph{compositionally} using specific classes of syntax trees \textbf{and} semantic operators?}
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Semantic algebra}
+  \begin{block}{(Essentially) one job:}
+    %Main job:
+    combine predicates with their arguments.
+  \end{block}
+  
+  \begin{center}
+    \begin{tikzpicture}[g/.style={draw, circle, black}]
+      \node[g] (m) at (-1,0) {};
+      \path (m) edge[loop left] node[above] {\small $\mathsf{Morgane}$} (m);
+      
+      \node[g] (d) at (1,0) {};
+      \node[] (unk) at (1, -1) {$\langle \mathsf{s} \rangle$};
+      \path (d) edge[loop right] node[above] {\small $\mathsf{sleep}$} (d);
+      \path (d) edge[->] node[left, midway] (ref) {\small $\mathsf{a}_0$} (unk);
+      \path[draw, dashed, red, thick, ->] (m) ..controls (-0.5,-1.5) and (0.55,-1).. (unk);
+    \end{tikzpicture}
+  \end{center}
+\end{frame}
+
+\begin{frame}{Two traditions}
+  \begin{block}{'Unification style'}
+    \textbf{Finite} set of markers denoting 'holes' ($\langle s \rangle, \langle o \rangle, \langle \textsf{mod} \rangle, \langle \textsf{comp} \rangle$) waiting to be filled with semantic values. Markers accessible in unconstrained order [Copestake \& all, 2001, Courcelles \& Englefriet 2012, Groshwitz \& all 2017]. 
+  \end{block}
+  \begin{itemize}
+  \item<2>[\alert{$\rightarrow$}] number of 'holes' accessible at a given time of the construction process is bounded: '\alert{bounded memory}'.
+  \end{itemize}
+  \begin{block}{'Lambda style'}
+    \textbf{Countably infinite} ordered set of markers but order constrain access (variables' scope) [Montague 1977, Steedman 2001].
+  \end{block}
+\end{frame}
+
+\begin{frame}{Question}
+  \begin{block}{'bounded memory' operators are popular}
+  \begin{itemize}
+  \item In semantic parsing [Chiang \& all 2013, Groschwitz \& all 2018, Chen \& all 2018].
+  \item For the manual design of grammars [Bender 2002 \emph{inter alia}].
+  \end{itemize}
+  \end{block}
+
+  \begin{alertblock}{Expressive limitation due to bounded memory capacity?}
+    \begin{itemize}
+    \item Specifically, considering long distance dependencies.
+    \item If impossible (from distance) to combine a predicate with its argument right away $\rightarrow$ need to store argument slot until argument becomes available.
+    %\item Link between compositionality, projectivity, and memory capacity?
+    \end{itemize}
+  \end{alertblock}
+\end{frame}
+
+\begin{frame}{Further motivation}
+  
+    \begin{itemize}
+    \item A lot is known on expressive capacity of grammatical formalisms -- in terms of languages (of words/trees).
+      \begin{itemize}
+      \item \emph{e.g.}, famous CCG/TAG/LIG [Vijay-Shanker \& Weir, 1994] weak equivalence result.
+      \end{itemize}
+    \item What about the joint expressivity of grammatical formalisms and specific semantic combinators in terms of \emph{relations}?
+    \item \alert{Do (weakly) equivalent grammatical formalisms support the same compositional interpretations?}
+    \item Inform the elaboration of semantic parsing systems
+    \end{itemize} 
+  %\begin{block}{Inform the elaboration of semantic parsing systems}
+  %  In particular systems relying on grammatical assumptions such as an adjacency principle (transition-based parsers, symbolic or neuronal). 
+  %\end{block}
+\end{frame}
+
+\hidden{
+\begin{block}{Questions}
+    \begin{itemize}
+    \item Quel type de syntaxe pour quel type de s\'emantique?
+    \item Est-ce que des formalismes syntaxiques qui d\'ecrivent les m\^emes langages supportent les m\^emes interpr\'etations compositionnelles?
+      %\item Important d'un point de vue th\'eorique mais aussi pour la conception de syst\`emes compositionnels de parsing s\'emantique.
+    \end{itemize}
+  \end{block}
+\end{frame}
+}
+
+\hidden{
+\begin{frame}{Main contribution}
+  %\begin{block}{In a nutshell}
+    \textbf{Compositional mechanisms of semantic interpretation which are both projective and with bounded memory are strictly less expressive than compositional non-projective ones with bounded memory.}
+  %\end{block}
+
+  %\begin{block}{Projectivity (roughly)}
+  %  Every node of the syntax tree concatenate the sub-expressions generated by its children. (\emph{e.g.} S['Morgane wants to sleep'] $\rightarrow$ NP['Morgane'] $+$ VP['wants to sleep'] ).
+  %\end{block}
+  
+\end{frame}
+}
+
+\hidden{
+\begin{frame}{M\'emoire: syntaxe \emph{vs} s\'emantique}
+  Les m\'echanismes compositionels projectifs \`a m\'emoire finie sont strictement moins expressifs que les m\'echanismes non-projectifs \`a m\'emoire finie.
+
+  \begin{block}{Remarque}
+    \begin{itemize}
+    \item Projectivit\'e: aussi une notion syntactique de m\'emoire.
+    \item Chaque constituant syntactique produit un fragment de l'expression finale repr\'esentable par 2 indices.
+    \item ${}_0\textnormal{Morgane}_1 \textnormal{veut}_2 \textnormal{dormir}_3$: $NP_{[0,1]}$, $VP_{[1,3]}$, $S_{[0,3]}$.
+    \item \textbf{impossible d'\'echanger une quantit\'e finie de m\'emoire `syntactique' contre une quantit\'e finie de m\'emoire `s\'emantique'}. 
+    \end{itemize}
+  \end{block}
+   
+\end{frame}
+}
+
+\hidden{
+\begin{frame}{Plan de l'expos\'e}
+  \begin{enumerate}
+  \item Concepts.
+  \item Intuition: projectivit\'e et capacit\'e m\'emorielle.
+  \item R\'esultats.
+  \item Discussion.
+  \end{enumerate}
+\end{frame}
+
+\begin{frame}{Concepts}
+  \begin{enumerate}
+  \item \textbf{Grammaires}. %et formalismes grammaticaux..}
+  \item M\'echanisme compositionnel.
+  \item Capacit\'e m\'emorielle.
+  %\item Classes de relation.
+  \end{enumerate}
+\end{frame}
+}
+
+\begin{frame}{Abstract view on grammars}
+  \begin{itemize}
+  \item Set of `grammatical' syntax trees $\{t_1, t_2, \dots \}$.
+  \item \emph{yield} function, $\mathsf{yd}$, associating each tree with its string projection (the linguistic expression for which it is a grammatical analysis).
+  \end{itemize}
+
+  \begin{center}
+    \begin{tikzpicture}
+      \node[yshift=10pt] (t1) at (0,0) {$t_1$};
+      \node (a1) at (0,-1) {};
+      \path[draw] (0,0) -- (-0.5,-1) -- (0.5,-1)--cycle;
+     
+      \begin{scope}[xshift=1.5cm]
+        \node[yshift=10pt] (t2) at (0,0) {$t_2$};
+        \node (a2) at (0,-1) {};
+        \path[draw] (0,0) -- (-0.5,-1) -- (0.5,-1)--cycle;
+      \end{scope}
+      
+      \node[xshift=2cm] at (0.5, -0.5) {$\dots$};
+      \node[xshift=2cm, yshift=-1.5cm] at (0.5, -0.5) {$\dots$};
+      
+      \begin{scope}[xshift=3.5cm]
+        \node[yshift=10pt] (tk) at (0,0) {$t_k$};
+        \node (ak) at (0,-1) {};
+        \path[draw] (0,0) -- (-0.5,-1) -- (0.5,-1)--cycle;
+      \end{scope}
+      \node[xshift=4cm] at (0.5, -0.5) {$\dots$};
+      \node[xshift=4cm, yshift=-1.5cm] at (0.5, -0.5) {$\dots$};
+      
+      \node (exp1) at (1,-2) {$\mathsf{exp}_1$};
+      \node (expl) at (3.5,-2) {$\mathsf{exp}_l$};
+
+      \path (a1) edge[decorate, decoration=snake, thick, ->] node[below left, midway] {$\mathsf{yd}$} (exp1);
+      \path (a2) edge[decorate, decoration=snake, thick, ->] (exp1);
+      \path (ak) edge[decorate, decoration=snake, thick, ->] (expl);
+      
+    \end{tikzpicture}
+  \end{center}
+  \begin{itemize}
+  \item The set $\{t_1, t_2, \dots \}$ could be given by any kind of descriptive/computing device (formal grammar, neural net,\dots).
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{The projective yield $\mathsf{yd}_0$}
+  \begin{itemize}
+  \item Concatenates children's yield from left to right.
+  \end{itemize}
+
+  \begin{center}
+    \scalebox{0.8}{
+      \begin{forest}
+        [S, name=snode
+          [NP, name=npnode
+            [N
+              [Morgane]
+            ]
+          ]
+          [VP, name=vpnode
+            [V
+              [wants]
+            ]
+            [VCOMP
+              [TO
+                [to]
+              ] 
+              [VB
+                [sleep]
+              ] 
+            ]
+          ]
+        ]
+        \node[xshift=2cm, draw, rectangle, blue] (s1) at (current bounding box.east) {Morgane}; \node[draw,rectangle, blue, right= 10pt of s1, yshift=1pt] (s2)  {wants to sleep};
+        \node[xshift=-5pt, yshift=-5pt] (r1) at (s1.south west) {};
+        \node[xshift=5pt, yshift=5pt] (r2) at (s2.north east) {};
+        \draw (r1) rectangle (r2);
+        \path(snode) edge[decorate, decoration=snake, ->, bend left, thick] node[midway, above]{$\mathsf{yd}_0$} (r2);
+        \path (npnode) edge[blue, decorate, decoration=snake, ->, bend right, thick]  (s1);
+        \path (vpnode) edge[blue, decorate, decoration=snake, ->, bend left, thick] (s2);
+      \end{forest}
+      }
+  \end{center}
+  
+  
+\end{frame}
+
+\begin{frame}{A non-projective yield: $\mathsf{yd}_w$}
+  \begin{block}{Swiss-German cross-serial dependencies [Shieber 1985]}
+    \begin{center}
+      \scalebox{0.8}{
+        \begin{forest}
+          [
+            $\alpha_{\textnormal{l\"ond}}$
+            [$\alpha_{\textnormal{d'chind}}$]
+            [$\beta_{\textnormal{h\"alfed}}$, name=nodehelp
+              [$\alpha_{\textnormal{Hans}}$]
+              [$\beta_{aastriche}$
+                [$\alpha_{huus}$]
+              ]
+            ]
+          ]      
+          \node[xshift=0.5cm, inner sep=0, outer sep=0] (s1) at (current bounding box.east) {d'chind};
+          \node[right=5pt of s1, outer sep=0, draw, rectangle, blue] (s2) {em Hans es huss};
+          \node[right=5pt of s2, inner sep=0, outer sep=0] (s3)  {l\"ond};
+          \node[right=5pt of s3, outer sep=0, draw, rectangle, blue] (s4)  {h\"alfed aastriche};
+        \path (nodehelp) edge [decorate, decoration=snake, ->, thick, blue, bend left] (s2);
+        \path (nodehelp) edge [decorate, decoration=snake, ->, thick, blue, bend left] node[xshift=-0.5cm, very near start, above] {$\mathsf{yd}_w$} (s4);
+        \end{forest}
+      }
+    \end{center}
+    
+    {\small
+    \begin{exe}
+      \sn
+      \gll (dass) (mer) {d' chind} {em Hans} {es huus} lönd hälfed aastriiche\\
+       (that) (we)  {the-children-ACC} {Hans-DAT} {the-house-ACC} let help
+      paint\\
+      \glt `(that we) let the children help Hans paint the house'
+    \end{exe}
+   }
+  \end{block}
+\end{frame}
+
+\hidden{
+\begin{frame}{Formalisme grammatical:}
+  \begin{itemize}
+    \item Collection quelconque de grammaires. 
+  \end{itemize}
+  \begin{exampleblock}{Exemples}
+    \begin{itemize}
+    \item[F_0] (Arbres de d\'erivations des grammaires hors-contextes, $\mathsf{red}_0$) 
+    \item[F_{TAG}] (Arbres de d\'erivation des grammaires TAG, $\mathsf{red}_{w}$).
+    \item[F_{dTAG}] (Arbres d\'eriv\'es des grammaires TAG, $\mathsf{red}_0$).
+    \end{itemize}
+    2 \& 3  d\'ecrivent les m\^emes langages (de mots), mais pas les m\^emes arbres. 
+  \end{exampleblock}
+\end{frame}
+}
+
+\hidden{
+\begin{frame}{Concepts}
+  \begin{enumerate}
+  \item Grammaires. %et formalismes grammaticaux..
+  \item \textbf{M\'echanismes compositionnels.}
+  \item Capacit\'e m\'emorielle.
+  %\item classes de relations.
+  \end{enumerate}
+\end{frame}
+}
+\begin{frame}{Semantic composition 1/3}
+  \begin{block}{Interpretation for elementary syntactic constituants}
+  
+    \begin{center}
+    \begin{tikzpicture}[intp/.style = {double, semithick, ->}]
+      \node (tm) at (-3.5,0) {\small Morgane}; 
+      \node (tv) at (0,0) {\small wants};
+      \node (td) at (3.5,0) {\small sleep};
+      
+      \begin{scope}[yshift=-1cm]
+        \node (gm) at (-3.5,0) {$\langle r \rangle$};
+        \path (gm) edge[->, loop left] node[left] {\small Morgane} (gm);
+        
+        \node (gv) at (0,0) {$\langle r \rangle$};
+        \path (gv) edge[->, loop left] node[left] {\small want} (gv);
+        \node (sgv) at (-0.75,-1) {\small $\langle$s$\rangle$};
+        \node (ogv) at (0.75,-1) {\small $\langle$o$\rangle$};
+        
+        \node (gd) at (3.5,0) {$\langle r \rangle$};
+        \path (gd) edge[->, loop right] node[right] {\small sleep} (gd);
+        \node (sgd) at (3.5,-1) {\small $\langle$s$\rangle$};
+
+        \path (gv) edge[->] node [midway, left] {\small $a_0$} (sgv);
+        \path (gv) edge[->] node [midway, right] {\small $a_1$} (ogv);
+
+        \path (gd) edge[->] node [midway, left] {\small $a_0$} (sgd);
+      \end{scope}
+      \path (tm) edge[intp] (gm);
+      \path (tv) edge[intp] (gv);
+      \path (td) edge[intp] (gd);      
+    \end{tikzpicture}
+    \end{center}
+  \end{block}
+  \begin{itemize}
+  \item $\langle s \rangle$, $\langle o \rangle$, $\langle r \rangle$: markers.
+  \item $\langle s \rangle$, $\langle o \rangle$: argument placeholders ('holes'): a semantic value will eventually be substituted for them during the process of semantic composition.
+  \item $\langle r \rangle$: root of the semantic constituant ('hook'), destined to be substituted for an argument placeholder.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Semantic composition 2/3}
+  \begin{block}{Semantic algebra (\emph{i.e.} composition operators)}
+    \begin{itemize}
+    \item Example with the AM algebra [Groschwitz \& all 2017]
+    \end{itemize}
+    %\begin{exampleblock}{Ex: AM algebra [Groschwitz \& all 2017]}
+    \begin{minipage}{0.65\linewidth}
+      \scalebox{0.9}{
+        \begin{tikzpicture}
+          \node (gv) at (0,0) {$\langle r \rangle$};
+          \path (gv) edge[->, loop left] node[left] (plh) {\small want} (gv);
+          \node (sgv) at (-0.75,-1) {\small $\langle s\rangle$};
+          \node (ogv) at (0.75,-1) {\small $\langle o \rangle$};
+          
+          \node (gd) at (2.5,0) {$\langle r \rangle$};
+          \path (gd) edge[->, loop right] node[right] (prh) {\small sleep} (gd);
+          \node (sgd) at (2.5,-1) {\small $\langle s \rangle$};
+          
+          \path (gv) edge[->] node [midway, left] {\small $a_0$} (sgv);
+          \path (gv) edge[->] node [midway, right] (comp) {\small $a_1$} (ogv);
+      
+          \path (gd) edge[->] node [midway, left] (subj) {\small $a_0$} (sgd);
+          \path (comp) -- node[midway] (m) {} (subj);
+          \node[yshift=0.5cm] (m') at (m) {};
+          \node[yshift=-0.5cm] (m'') at (m) {};
+          \draw (m') -- (m'');
+          
+          \node[yshift=-0.5cm] (c1) at (m') {};
+          \node[yshift=0.5cm] (c2) at (m) {};
+
+          %\node[yshift = -1.25cm, xshift=-1.25cm] (c3) at (m') {};
+          %\node[yshift = -1.25cm, xshift=1.25cm] (c4) at (m') {};
+
+          \draw[draw, dashed, blue, thick, <->] (ogv) ..controls (c1) and (c2) .. (gd);
+          \path (sgv) edge[draw, dashed, blue, thick, <->, bend right] (sgd);
+          
+          \draw[red,dashed]  (gd.north west) -- (gd.south east);
+          \draw[red,dashed]  (gd.north east) -- (gd.south west);
+
+          \draw[red,dashed]  (ogv.north west) -- (ogv.south east);
+          \draw[red,dashed]  (ogv.north east) -- (ogv.south west);
+
+          \node[yshift = -2cm] (plb) at (plh.north west) {};
+          \path (plh.north west) edge[bend right=10] node[midway, left] {$App_o$} (plb);
+          \node[yshift = -2cm] (prb) at (prh.north east) {};
+          \path (prh.north east) edge[bend left=10] node[midway, right] {$=$} (prb);
+        \end{tikzpicture}
+      }
+    \end{minipage}
+    \begin{minipage}{0.34\linewidth}
+      \scalebox{0.9}{
+        \begin{tikzpicture}  \node (gv) at (0,0) {$\langle r \rangle$};
+          \path (gv) edge[->, loop left] node[left] {\small want} (gv);
+          \node (sgv) at (-0.75,-1) {\small $\langle s \rangle$};
+          \node (gd) at (0.75,-1) {};
+          \path (gv) edge[->] node [midway, left] {\small $a_0$} (sgv);
+          \path (gv) edge[->] node [midway, right] {\small $a_1$} (gd);
+          \path (gd) edge[->, loop below] node[right] {\small sleep} (gd);
+          \path (gd) edge[->] node [midway, above] (subj) {\small $a_0$} (sgv);      
+        \end{tikzpicture}
+      }
+    \end{minipage}
+    
+    %\end{exampleblock}
+    \begin{itemize}
+    \item Merge referenced marker $\langle o \rangle$ of the fonctor with the root $\langle r \rangle$ of the argument, then `forgets' these two markers.
+    \item Merge any other identical marker (here, $\langle s \rangle$).
+    \end{itemize}
+  \end{block}
+\end{frame}
+
+\begin{frame}{Semantic composition 3/3}
+  \begin{block}{Homomorphic interpretation of syntax trees}
+    $\{ VP(x_1, x_2) \rightarrow APP_o(x_1, x_2),  S(x_1, x_2) \rightarrow APP_s(x_2, x_1) \}$
+    \begin{center}
+      \scalebox{0.8}{
+      \begin{forest}
+        [S, name = root, tikz = {
+            \begin{scope}[xshift = -5.5cm, yshift=-1cm]
+              \node  (v) at (1.25,1.25) {$\langle r \rangle$};
+              \path (v) edge[loop left] node[left] {\small $\mathsf{want}$} (v);
+              \node  (m) at (0.5,0) {};
+              \path (m) edge[loop left] node[above] {\small $\mathsf{Morgane}$} (m);
+              \node (d) at (2,0) {};
+              \path (d) edge[loop right] node[above] {\small $\mathsf{sleep}$} (d);
+              \path (v) edge[->] node[left, midway] (ref) {\small $\mathsf{a}_0$} (m);
+              \path (v) edge[->] node[right, midway] {\small $\mathsf{a}_1$} (d);
+              \path (d) edge[->] node[above] (a0) {\small $\mathsf{a}_0$} (m);
+              \path (root) edge[double, ->] node[midway, above]{\small $App_s(x_2, x_1)$} (v); 
+            \end{scope}
+          }
+          [NP, name = npnode, tikz = {\node[xshift=-1.5cm, yshift=-1.5cm] (gm) at (npnode) {$\langle r \rangle$};
+              \path (gm) edge[->, loop left] node[left] {\small Morgane} (gm);
+              \path (npnode) edge[double, ->, bend right] node[midway, above]{\small $x_1$} (gm);
+          }
+          [N
+            [Morgane]
+          ]
+        ]
+        [VP, name=vpnode, tikz={
+            \begin{scope}[xshift = 4cm, yshift=-1.5cm]
+              \node (gv) at (0,0) {$\langle r \rangle$};
+              \path (gv) edge[->, loop left] node[left] {\small want} (gv);
+              \node (sgv) at (-0.75,-1) {\small $\langle$s$\rangle$};
+              \node (gd) at (0.75,-1) {};
+              \path (gv) edge[->] node [midway, left] {\small $a_0$} (sgv);
+              \path (gv) edge[->] node [midway, right] {\small $a_1$} (gd);
+              \path (gd) edge[->, loop below] node[right] {\small sleep} (gd);
+              \path (gd) edge[->] node [midway, above] (subj) {\small $a_0$} (sgv);
+            \end{scope}
+            \path (vpnode) edge[bend left, double, ->] node [midway, above]{\small $x_2$} (gv);
+          }
+          [V
+            [wants]
+          ]
+          [VCOMP
+            [TO, l=2mm [to, l=2mm]]
+            [VB, l=2mm
+              [sleep, l=2mm]
+            ]           
+          ]
+        ]
+        ]
+      \end{forest}
+      }
+    \end{center}
+  \end{block}
+  
+\end{frame}
+
+\hidden{
+\begin{frame}
+  \begin{enumerate}
+  \item Grammaires. %et formalismes grammaticaux..
+  \item M\'echanismes compositionnels.
+  \item \textbf{Capacit\'e m\'emorielle.}
+  %\item classes de relations.
+  \end{enumerate}
+\end{frame}
+}
+
+\begin{frame}{'Semantic' memory}
+  
+    \begin{center}
+      \begin{forest}
+        [{S$\langle r \rangle$}
+          [NP
+            [N
+              [{Morgane$\langle r \rangle$}]
+            ]
+          ]
+          [{VP$\langle r, s \rangle$} 
+            [V
+              [{\bf \color{blue}wants$\langle r, s, o \rangle$}]
+            ]
+            [VCOMP
+              [TO [{to$\langle \rangle$}]]
+              [VINF
+               [{sleep$\langle r, s \rangle$}]
+             ]
+           ]
+          ]
+        ]
+        \node[xshift=1cm, yshift=1cm] at (current bounding box.east) {\color{blue} $3$ markers required};  
+      \end{forest}
+    \end{center}
+ 
+\end{frame}
+
+\hidden{
+\begin{frame}
+  \begin{enumerate} 
+  \item Grammaires. %et formalismes grammaticaux..
+  \item M\'echanismes compositionnels.
+  \item Capacit\'e m\'emorielle.
+  %\item \textbf{Classes de relations.}
+  \end{enumerate}
+\end{frame}
+
+
+\begin{frame}{Classes de relations}
+  \begin{itemize}
+  \item F formalisme grammatical.
+  \item $n$ capacit\'e m\'emorielle max.
+  \end{itemize}
+  \[ \mathcal{R}(F, n)\]
+  relations expressions linguistiques/repr\'esentations s\'emantiques expressibles compositionnellement avec une grammaire de $F$ et une capacit\'e m\'emorielle $\le n$.
+\end{frame}
+}
+
+\begin{frame}{Projectivity and memory 1/3}
+  \begin{center}
+    \begin{tikzpicture}
+      \node (s) at (0,0) {d'chind em Hans es huss {\color{blue} l\"ond} {\color{darkgreen} h\"alfed} {\color{red} aastriche}};
+
+      \begin{scope}[yshift=4cm]
+      \node (g) at (0,0)  {$\langle r \rangle$};
+      \path (g) edge[loop left, ->] node[left]{\color{blue} let} (g);
+
+      \node (e) at (0,-1) {.};
+      \path (e) edge[loop left, ->] node[left]{children} (e);
+
+      \node (f) at (1,0)  {.};
+      \path (f) edge[loop right, ->] node[right]{\color{darkgreen} help} (f);
+
+      \node (h) at (1.5,-1)  {.};
+      \path (h) edge[loop right, ->] node[right]{\color{red} paint} (h);
+
+      \node (i) at (1,-1)  {.};
+      \path (i) edge[loop below, ->] node[below]{Hans} (i);
+
+      \node (j) at (2,-2)  {.};
+      \path (j) edge[loop below, ->] node[below]{house} (j);
+
+      \path (g) edge[->] node[midway, above] {$a_2$} (f);
+      \path (g) edge[->] node[midway, left] {$a_1$} (e);
+
+      \path (f) edge[->] node[midway, right] {$a_2$} (h);
+      \path (f) edge[->] node[midway, left] {$a_1$} (i);
+
+      \path (h) edge[->] node[midway, right] {$a_1$} (j);
+           
+      \end{scope}
+    \end{tikzpicture}
+  \end{center}
+
+  \begin{itemize}
+  \item {\color{blue} l\"ond}: $\langle r, o_1, o_2 \rangle$ (two objects).
+  \item {\color{darkgreen} h\"alfed}: $\langle r, o_1, o_2 \rangle$ (two objects).
+  \item {\color{red} aastriche}: $\langle r, o_1 \rangle$ (one object).
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Projectivity and memory 2/3}
+  Non-projective analysis possible with a $3$-markers capacity.
+  \begin{center}
+    \begin{forest}
+      [{$\alpha_{\textnormal{l\"ond}} \langle r, {\color{orange} \cancel{o_1}}, {\color{purple} \cancel{o_2}} \rangle$}
+        [{$\alpha_{\textnormal{d'chind}} \langle {\color{orange} r} \rangle$}]
+        [{$\beta_{\textnormal{h\"alfed}} \langle {\color{purple}r}, {\color{red} \cancel {o'_1}}, {\color{darkgreen} \cancel{ o'_2} } \rangle$}
+          [{$\alpha_{\textnormal{Hans}} \langle {\color{red} r} \rangle$}]
+          [{$\beta_{aastriche}\langle {\color{darkgreen}r}, {\color{blue} \cancel{o'_1}} \rangle$}
+            [{$\alpha_{huus} \langle {\color{blue} r} \rangle$}]
+          ]
+        ]
+      ]
+    \end{forest}
+  \end{center}
+\end{frame}
+
+
+\begin{frame}{Projectivit\'e and memory 3/3}
+  With a projective analysis: 4 markers seem intuitively required.
+  \begin{center}
+    \scalebox{0.7}{
+      \begin{forest}
+          [
+            S
+            [NP
+              [d'chind]          
+            ]
+            [VP
+              [NP
+              [em Hans]
+              ]
+              [
+                [VP
+                  [NP
+                    [es huus]
+                  ]
+                  [{\textbf{VP$\langle r, o_1, o'_1, o''_1 \rangle$}}
+                    [{VP$\langle r, o_1, o'_1, {\color{darkgreen} o'_2} \rangle$}
+                      [VP
+                        [{l\"ond$\langle r, o_1, {\color{blue} o_2} \rangle$}]
+                      ]
+                      [{h\"alfed$\langle {\color{blue} r}, o'_1, {\color{darkgreen} o'_2} \rangle$}]
+                    ]
+                    [{aastriche$\langle {\color{darkgreen}r}, o''_1 \rangle$}]
+                  ]
+                ]
+              ]
+            ]
+          ]
+        \end{forest}
+    }
+    \end{center}
+\end{frame}
+
+\begin{frame}{Abstracting away}
+  \begin{itemize}
+  \item Arbitrary long crossed-serial dependencies $\rightarrow$ infinite memory required?
+  \item A formal relation for a mathematical proof:
+  \end{itemize}
+
+  \begin{block}{$\mathsf{CSD}$}
+    Word to graph function $w \mapsto g_w$ where
+    \begin{itemize}   
+    \item Words $w$ are of the form: $\underbrace{a \dots a}_{\textnormal{n times}}\underbrace{b \dots b}_{\textnormal{m times}}\underbrace{c \dots c}_{\textnormal{n times}}\underbrace{d \dots d}_{\textnormal{m times}}$.
+    \item And for each such $w$, $g_w$ is:
+      \begin{tikzpicture}
+        \node[draw, circle] (a) at (0,0) {};
+        \node[draw, circle] (c) at (0,-1) {}; 
+
+        \node (do1) at (1,0) {\dots};
+
+        \node[draw, circle] (an) at (2,0) {};
+        \node[draw, circle] (cn) at (2,-1) {};
+        
+        \node[draw, circle] (b) at (3,0) {};
+        \node[draw, circle] (d) at (3,-1) {};
+
+        \node[] (do2) at (4,0) {\dots};
+        \node[draw, circle] (bn) at (5,0) {};
+        \node[draw, circle] (dn) at (5,-1) {};
+
+        \node[draw, circle] (last) at (6,0) {};
+
+
+        \path (a) edge[->] node[midway, left] {$c$} (c);
+        \path (a) edge[->] node[midway, above] {$a$} (do1);
+        \path (do1) edge[->] node[midway, above] {$a$} (an);
+        \path (an) edge[->] node[midway, left] {$c$} (cn);
+        \path (an) edge[->] node[midway, above] {$a$} (b);
+        \path (b) edge[->] node[midway, left] {$d$} (d);
+        \path (b) edge[->] node[midway, above] {$b$} (do2);
+        \path (do2) edge[->] node[midway, above] {$b$} (bn);
+        \path (bn) edge[->] node[midway, left] {$d$} (dn);
+        \path (bn) edge[->] node[midway, above] {$b$} (last);
+        
+      \end{tikzpicture}
+    \end{itemize}
+  \end{block}
+  
+\end{frame}
+
+\begin{frame}{Unnatural constructions}
+  \begin{alertblock}{\only<2->{\textbf{NOT A}} Theorem \only<1>{?}}
+    There exists no projective grammar and finite memory compositional interpretation mechanism over a projective grammar which expresses $\mathsf{CSD}$.
+  \end{alertblock}
+
+  \uncover<3>{
+    \begin{center}
+      \includegraphics[width=0.8\textwidth]{pics/pic-stupid-derivation.pdf}
+    \end{center}
+  }
+\end{frame}
+
+
+\begin{frame}{Theorem}
+  If one further impose specific alignements between elementary syntactic and semantic constituants ('$a$' aligned with '\begin{tikzpicture}[inner sep=0pt] \node[] (l) {$\cdot$}; \node[xshift=20pt] at (l) (l') {$\cdot$};\path(l) edge[->] node[above]{a} (l'); \end{tikzpicture}', '$b$' aligned with '\begin{tikzpicture}[inner sep=0pt] \node[] (l) {$\cdot$}; \node[xshift=20pt] at (l) (l') {$\cdot$};\path(l) edge[->] node[above]{b} (l'); \end{tikzpicture}' \dots) %'Hans' with \begin{tikzpicture}[inner sep=0pt] \node[draw, circle] (l) {\phantom{x}};\path(l) edge[loop right] node[right]{Hans} (l); \end{tikzpicture}, \dots)
+  it can be shown:
+
+  \begin{block}{Theorem}
+    \begin{itemize}
+    \item \textbf{there exists no projective grammar and finite memory compositional interpretation mechanism over a projective grammar} expressing $\mathsf{CSD}$ and respecting elementary alignments.
+    \item There exists a \textbf{non-projective} grammar and a finite-memory compositional interpretation mechanism expressing $\mathsf{CSD}$ and respecting elementary alignments.
+    \item Remark: strong assumption on alignments but no assumption on grammatical formalism.
+    \end{itemize}
+  \end{block}
+\end{frame}
+
+
+
+
+\begin{frame}{Imperfect aligments}
+  \begin{itemize}
+  \item Whithout the alignment condition the theorem is false.
+  \item However, weaker form of alignments can be achieved if we constrain the grammatical formalism (pumping lemma).
+  \item \alert{Requires arbitrary complex 'arguments' to avoid previous unnatural constructions.} 
+  \item Result for Tree-Adjoining Grammars (TAG).
+  \end{itemize}
+
+  \begin{block}{$\overline{\mathsf{CSD}}$ relation}
+    \begin{minipage}{0.3\linewidth}
+      \[a\textcolor{red}{\overline{aa}}b\textcolor{red}{\overline{b}}bc\textcolor{red}{\overline{c}}dd\]
+    \end{minipage}
+    \begin{minipage}{0.69\linewidth}
+      \begin{center}
+        \includegraphics[width=0.7\textwidth]{pics/pic-csd.pdf}
+      \end{center}
+    \end{minipage}
+  \end{block}
+  
+\end{frame}
+
+\begin{frame}{Two kinds of trees}
+  \begin{itemize}
+  \item TAG grammars produce derivation trees and derived trees.
+  %\item Which one should we elect for semantic construction?
+  %\item Deux `grammaires' distinctes dans notre d\'efinition.
+  \end{itemize}
+
+    \begin{minipage}{0.49\linewidth}
+      \begin{center}
+        \textbf{Derivation (dependency) tree}
+        \begin{forest}
+          [{$\alpha_{\textnormal{l\"ond}}$}, name=dep
+            [{$\alpha_{\textnormal{d'chind}}$}]
+            [{$\beta_{\textnormal{h\"alfed}}$}
+              [{$\alpha_{\textnormal{Hans}}$}]
+              [{$\beta_{aastriche}$}
+                [{$\alpha_{huus}$}]
+              ]
+            ]
+          ]
+          %\node[above = of dep] {Arbre de d\'erivation (d\'ependences)};
+        \end{forest}
+      \end{center}
+    \end{minipage}
+    \begin{minipage}{0.5\linewidth}
+      \begin{center}
+        \textbf{Derived (syntagmatic) tree}
+        \scalebox{0.7}{
+          \begin{forest}
+            [
+              S, name=Snode
+              [NP
+                [d'chind]          
+              ]
+              [VP
+                [NP
+                  [em Hans]
+                ]
+                [
+                  [VP
+                    [NP
+                      [es huus]
+                    ]
+                    [VP
+                      [{VP}
+                        [VP
+                          [{l\"ond}]
+                        ]
+                        [{h\"alfed}]
+                      ]
+                      [{aastriche}]
+                    ]
+                  ]
+                ]
+              ]
+            ]        
+            %\node[above = of Snode] {Arbre d\'eriv\'e (syntagmatique)};
+          \end{forest}
+        }
+      \end{center}
+    \end{minipage}
+\end{frame}
+
+\begin{frame}{Two (weakly) equivalent grammar formalisms}
+  \begin{itemize}
+  \item Formalism $\mathsf{TAG}$: Use the {\bf derivation trees} of some TAG grammar with a \textbf{non-projective} yield.
+  \item Formalism $\mathsf{PTAG}$: Use the {\bf derived trees} of some TAG grammar wutg the \textbf{projective} yield.
+  \item The two formalisms generate the same \textbf{word langages}, but not necessarily the same \textbf{relations}.
+  \end{itemize}
+
+  \begin{center}
+    \scalebox{0.5}{
+      \begin{forest}
+        [, phantom,
+          [{$\alpha_{\textnormal{l\"ond}}$}
+            [{$\alpha_{\textnormal{d'chind}}$}]
+            [{$\beta_{\textnormal{h\"alfed}}$}
+              [{$\alpha_{\textnormal{Hans}}$}]
+              [{$\beta_{aastriche}$}
+                [{$\alpha_{huus}$}]
+              ]
+            ]
+          ]
+          [
+            S
+            [NP
+              [d'chind]          
+            ]
+            [VP
+              [NP
+                [em Hans]
+              ]
+              [
+                [VP
+                  [NP
+                    [es huus]
+                  ]
+                  [VP
+                    [{VP}
+                      [VP
+                        [{l\"ond}]
+                      ]
+                      [{h\"alfed}]
+                    ]
+                    [{aastriche}]
+                  ]
+                ]
+              ]
+            ]
+          ]
+        ]
+      \end{forest}
+    }
+  \end{center}
+\end{frame}
+
+
+
+\begin{frame}{Second result}
+  \begin{block}{Theorem}
+    \begin{itemize}
+    \item There exists a (non-projective) $\mathsf{TAG}$ grammar and a finite memory compositional interpretation mechanism expressing $\overline{\mathsf{CSD}}$.
+    \item There exists no (projective) $\mathsf{PTAG}$ grammar and finite memory compositional interpretation mechanism expressing $\overline{\mathsf{CSD}}$.
+    \end{itemize}
+  \end{block}
+\end{frame}
+
+\hidden{
+  \begin{frame}{Formalisation}
+\end{frame}
+}
+
+\begin{frame}{Recap}
+  \begin{itemize}
+  \item Theoretical result on the link between compositionality,  projectivity and bounded memory capacity.
+  \item Strong result, under strong assumption of perfect syntax/semantics aligmnents at the lexical level.
+  \item \textbf{independent} of considered grammatical formalism.
+    %\item D\'epend uniquement de la projectivit\'e de la grammaire. S'applique donc \`a des formalismes tr\`es expressifs, y compris mod\`eles neuronnaux proj(\emph{e.g.} la pluspart des syst\`emes shift/reduce).
+  \item New light shed on the choice between derivation/derived tree as the support of semantic composition for TAG grammars.
+  \item Do weakly equivalent grammatical formalisms support the same compositional interpretation mechanisms? $\rightarrow$ \textbf{No!}.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Conclusions and future work}
+  \begin{itemize}
+  \item Notion of expressivity at the syntax/semantics interface.
+  \item Theoretical study on the link between projectivity and 'semantic' memory.
+  \item What could we say about more restricted forms of non-projectivity? Finite increase in required memory capacity?
+  \item Artificial non-projectivity due to imperfect aligners in semantic parsing systems.
+  \item Locally translate from 'unification style' to 'lambda style' to circumvent projectivity issues?
+  \end{itemize}
+\end{frame}
+
+
+\begin{frame}{}
+  \begin{center}
+    \huge Questions?
+  \end{center}
+\end{frame}
+
+\hidden{
+\begin{frame}{G\'en\'eralisation}
+  \begin{itemize}
+  \item D\'ependences crois\'ees arbitrairement longues.
+  \item Une relation symbolique pour un r\'esultat formel:
+  \end{itemize}
+
+  \begin{block}{$\mathsf{CSD}$}
+    \begin{itemize}
+    \item Un langage symbolique et un graphe $g_w$ pour chaque mot $w$ du langage.
+    \item Mots $w$ de la forme: $\underbrace{a \dots a}_{\textnormal{n fois}}\underbrace{b \dots b}_{\textnormal{m fois}}\underbrace{c \dots c}_{\textnormal{n fois}}\underbrace{d \dots d}_{\textnormal{m fois}}$.
+    \item Interpr\'etation $g_w$ de la forme:
+      \begin{tikzpicture}
+        \node[draw, circle] (a) at (0,0) {};
+        \node[draw, circle] (c) at (0,-1) {}; 
+
+        \node (do1) at (1,0) {\dots};
+
+        \node[draw, circle] (an) at (2,0) {};
+        \node[draw, circle] (cn) at (2,-1) {};
+        
+        \node[draw, circle] (b) at (3,0) {};
+        \node[draw, circle] (d) at (3,-1) {};
+
+        \node[] (do2) at (4,0) {\dots};
+        \node[draw, circle] (bn) at (5,0) {};
+        \node[draw, circle] (dn) at (5,-1) {};
+
+        \node[draw, circle] (last) at (6,0) {};
+
+
+        \path (a) edge[->] node[midway, left] {$c$} (c);
+        \path (a) edge[->] node[midway, above] {$a$} (do1);
+        \path (do1) edge[->] node[midway, above] {$a$} (an);
+        \path (an) edge[->] node[midway, left] {$c$} (cn);
+        \path (an) edge[->] node[midway, above] {$a$} (b);
+        \path (b) edge[->] node[midway, left] {$d$} (d);
+        \path (b) edge[->] node[midway, above] {$b$} (do2);
+        \path (do2) edge[->] node[midway, above] {$b$} (bn);
+        \path (bn) edge[->] node[midway, left] {$d$} (dn);
+        \path (bn) edge[->] node[midway, above] {$b$} (last);
+        
+      \end{tikzpicture}
+    \end{itemize}
+  \end{block}
+  
+\end{frame}
+
+
+\begin{frame}{Th\'eor\`eme}
+ 
+  \begin{itemize}
+  \item $\mathsf{Tag}$: formalisme des grammaires d'arbres adjoints (non-projectif).
+  \item $F$: formalisme grammatical projectif quelconque (= collection de grammaires projectives).
+  \item $\mathcal{R}_{\leftrightarrow}(F, n)$: relations mots/graphes expressibles compositionnellement avec une grammaire quelconque de $F$, une capacit\'e m\'emorielle $\le n$, et en respectant les alignements entre lettres $x$ et arr\^etes $\begin{tikzpicture}[] \path (0,0) edge[->] node[above, midway] {$x$} (1,0); \end{tikzpicture}$. 
+  \end{itemize}
+  
+  \begin{block}{Theor\`eme}
+    \begin{itemize}
+    \item $\mathsf{CSD} \in \mathcal{R}_{\leftrightarrow}(\mathsf{Tag}, 2)$.
+    \item \textbf{Pour tout $F$ et $n$} $\mathsf{CSD} \notin \mathcal{R}_{\leftrightarrow}(F, n)$
+    \end{itemize}
+  \end{block}
+\end{frame}
+
+
+
+\hidden{
+\begin{frame}{Diff\'erents types de marqueurs.}
+
+  \begin{block}{Conscencus s\'emantique:}
+    \begin{itemize}
+    \item Remplacer un marqueur temporaire du foncteur par son argument.
+    \end{itemize}
+  \end{block}
+
+  \begin{alertblock}{Divergence}
+    \begin{itemize}
+    \item Quel type de marqueur?
+    \item Solution 1: nommer (par ex. $\langle s \rangle$) les marqueurs, et op\'erations de subsitution correspondantes ($App_c$) $\rightarrow$ marqueurs en nombre fini.
+    \item Solution 2: 'structurer' les marqueurs en imposant un ordre d'utilisation $\rightarrow$ .
+    \end{itemize} 
+  \end{alertblock}
+
+\end{frame}
+}
+}
+
+
+
+\end{document}

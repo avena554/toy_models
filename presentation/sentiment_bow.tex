@@ -1,0 +1,366 @@
+\documentclass{beamer}
+
+%\usepackage{listings}
+%\usepackage[francais]{babel}
+%\usepackage[T1]{fontenc}
+%\usepackage[utf8]{inputenc}
+\usepackage{fontspec}
+\usepackage{xltxtra}
+\setmainfont[Mapping=tex-text]{Century Gothic.ttf}
+%\usepackage{MyriadPro}
+\usepackage{graphicx}
+\usepackage{array}
+\usepackage{tikz}
+\usetikzlibrary{positioning, backgrounds, shapes, chains, arrows, decorations.pathmorphing, matrix, fit}
+
+\usepackage{forest}
+
+\usepackage{amsmath,amsthm,amssymb}  
+\usepackage{stmaryrd}
+%\usepackage{mdsymbol}
+\usepackage{MnSymbol}
+\usepackage{xcolor, colortbl}
+\usepackage{verbatim}
+\usepackage{array}
+\usepackage{gb4e}
+%\usepackage{csquotes}
+
+\usepackage{cancel}
+
+
+
+\usepackage[absolute,overlay]{textpos}
+%\usepackage[texcoord,
+%grid,gridcolor=red!10,subgridcolor=green!10,gridunit=pt]
+%{eso-pic}
+
+
+
+%\useoutertheme{infolines}
+\usetheme{focus}
+
+\newcommand{\hidden}[1]{}
+
+%colors
+\definecolor{darkgreen}{rgb}{0,0.5,0}
+\usebeamercolor{block title}
+\definecolor{beamerblue}{named}{fg}
+\usebeamercolor{alert block title}
+\definecolor{beamealert}{named}{fg}
+
+\renewcommand{\colon}{\!:\!}
+
+
+\newcommand\paraitem{%
+ \quad
+ \makebox[\labelwidth][r]{%
+ \makelabel{%
+ \usebeamertemplate{itemize \beameritemnestingprefix item}}}\hskip\labelsep}
+
+\newcommand{\mmid}{\mathbin{{\mid}{\mid}}}
+
+\definecolor{lightgreen}{RGB}{60, 225, 60}
+\definecolor{lightred}{RGB}{225, 60, 60}
+
+\newcolumntype{o}{>{\columncolor{lightgreen}}c}
+\newcolumntype{x}{>{\columncolor{lightred}}p}
+
+
+%tikz stuff
+
+\begin{document}
+\tikzset{
+  invisible/.style={opacity=0, text opacity=0},
+  grayed/.style={opacity=0.5, text opacity=0.5},
+  focused on/.style={alt={#1{}{grayed}}},
+  visible on/.style={alt={#1{}{invisible}}},
+  alt/.code args={<#1>#2#3}{%
+    \alt<#1>{\pgfkeysalso{#2}}{\pgfkeysalso{#3}} % \pgfkeysalso doesn't change the path
+  },
+  intp e/.style={->, double, dashed, thin},
+  yd e/.style={->, dashed, blue},
+  lyd e/.style={yd e},
+  ryd e/.style={->, dashed, red},
+  lyield/.style={draw=blue, rectangle, inner sep=2pt},
+  ryield/.style={draw=red, rectangle, inner sep=2pt},
+  block/.style={draw, circle, inner sep=1pt}
+}
+
+ \forestset{
+   uncover node/.style={focused on=#1, for children={edge={focused on=#1}}},
+   uncover tree/.style={uncover node=#1, for descendants={focused on=#1, edge={focused on=#1}}},   
+ }
+
+
+\title{Analyse de sentiment avec perceptron multicouche et sac de mots} 
+\author{Antoine Venant}
+\institute{Universit\'e de Montr\'eal}
+\date{\today}
+\maketitle
+
+\begin{frame}{T\^ache et approche}
+  \begin{itemize}
+  \item Nous allons pr\'esenter un exemple d'application de l'apprentissage automatique dans le traitement automatique des langues.
+  \item Nous allons voir plusieurs mani\`eres d'entrainer un {\bf perceptron multicouche} conjointement avec un mod\`ele {\bf sac de mots} pour r\'esoudre un probl\`eme d'analyse de sentiment.
+  \item La t\^ache consiste \`a \'etiqueter automatiquement des critiques de films selon qu'elles pr\'esentent une opinion positive (\'etiquette 1) ou n\'egative (\'etiquette 0).
+  \item C'est un probl\`eme de classification binaire de textes. 
+  \end{itemize}    
+\end{frame}
+
+\begin{frame}
+  \frametitle{Donn\'ees}
+
+  \begin{itemize}
+  \item Nous allons utiliser le corpus IMDB 50K pour entrainer puis \'evaluer plusieurs mod\`eles d'analyse de sentiment. 
+  \end{itemize}
+
+  \begin{block}{Le corpus IMDB [Maas et al., 2011]}
+    \begin{itemize}
+    \item 50000 critiques de films, en anglais, extraites du site \url{www.imdb.com}.
+    \item Chaque critique est \'etiquet\'ee positive (1) ou n\'egative (0).
+    \item La distribution des \'etiquette est \'equilibr\'ee.
+    \item 25000 critiques positives, 25000 critiques n\'egatives.
+    \end{itemize}
+  \end{block}
+\end{frame}
+
+
+\begin{frame}
+  \frametitle{Exemple de critique positive}
+
+  \begin{exampleblock}{Etiquette 1}
+    deodato brings us some shocking moments and a movie that doesn't take itself too seriously. absolutely a classic in it's own particular kind of way. this movie provides a refreshingly different look at barbarians. if you get a chance to see this movie do so. you'll definitely have a smile on your face most of the time. not because it's funny or anything mundane like that but because it's so bad it goes out the other way and becomes good, though maybe not clean, fun.
+  \end{exampleblock}
+
+\end{frame}
+
+
+
+\begin{frame}
+  \frametitle{Exemple de critique n\'egative}
+
+  \begin{alertblock}{Etiquette 0}
+    as a "jane eyre" fan i was excited when this movie came out. "at last," i thought, "someone will make this book into a movie following the story actually written by the author." wrong!!! if the casting director was intending to cast a "jane" who was plain he certainly succeeded. however, surely he could have found one who could also act. where was the tension between jane and rochester? where was the spooky suspense of the novel when the laughter floated into the night seemingly from nowhere? where was the sparkle of the child who flirted and danced like her mother? finally, why was the plot changed at the end? one wonders whether the screenwriters had actually read the book. what a disappointment
+  \end{alertblock}
+
+\end{frame}
+
+
+\begin{frame}
+  \frametitle{Section des donn\'ees}
+  On divise les donn\'ees en 3 ensembles: entrainement, d\'eveloppement et \'evaluation: 
+  \begin{itemize}
+  \item 18750 critiques pour l'ensemble d'entrainement.
+  \item 6250 critiques pour l'ensemble de d\'eveloppement.
+  \item 25000 critiques pour l'ensemble d'\'evaluation.
+  \item Les 3 ensembles sont \'equilibr\'es, avec autant de critiques positives et n\'egatives.
+  \end{itemize}
+\end{frame}
+
+
+
+\begin{frame}{Structure du mod\`ele}
+  \begin{itemize}
+  \item Nous allons utiliser un {\bf perceptron multicouche} pour classifier chaque document du corpus d'entrainement.
+  \item Le perceptron multicouche $P$ re\c coit en entr\'ee un vecteur $v$ de traits num\'eriques et produit en sortie un score $P(v)$.
+  \item La probabilit\'e d'attribuer l'\'etiquette $1$ est ensuite d\'efinie par \[\frac{1}{1 + e^{-P(v)}}.\]
+  \item {\bf pour pouvoir classifier un exemple avec le perceptron il faut donc pr\'elablement extraire le vecteur de traits $v$ du texte de la critique \`a classifier}.
+  \end{itemize}
+\end{frame}
+
+
+\begin{frame}{Illustration}
+  \begin{center}
+    \begin{tikzpicture}
+      \begin{scope}[ampersand replacement=\&]
+        \matrix (v) [draw, every node/.style={outer sep=0}, matrix of nodes, nodes in empty cells, execute at empty cell=\node{\strut}] at (0, 2){
+        v_1 \& v_2 \& \dots \& v_n\\
+        };
+        \matrix (l1) [draw, column sep=0.6cm, matrix of nodes, nodes in empty cells, nodes={circle, draw, anchor=center, align=center}] at (0, 4){
+         \& \& |[draw=none]| \dots \& \\
+        };
+        \matrix (l2) [draw, column sep=0.6cm, matrix of nodes, nodes in empty cells, nodes={circle, draw, anchor=center, align=center}] at (0, 5.5){
+         \& \& |[draw=none]| \dots \& \\
+        };
+        \node[circle, draw] (out) at (0, 6.5) {};
+        \node (end) at (0, 7) {};
+      \end{scope}
+      \node[xshift=-3mm] (vname) at (v.west) {$v = {}$};
+      \node[rectangle, draw] (text) at (0, 0) {this is a fantastic movie};
+      \path (text) edge[->] node[midway, right]{extraire $n$ traits num\'eriques} (v);
+      \path (v-1-1) edge[->] (l1-1-1);
+      \path (v-1-1) edge[->] (l1-1-2);
+      \path (v-1-1) edge[->] (l1-1-4);
+      \path (v-1-2) edge[->] (l1-1-1);
+      \path (v-1-2) edge[->] (l1-1-2);
+      \path (v-1-2) edge[->] (l1-1-4);
+      \path (v-1-4) edge[->] (l1-1-1);
+      \path (v-1-4) edge[->] (l1-1-2);
+      \path (v-1-4) edge[->] (l1-1-4);
+
+      \path (l1-1-1) edge[dashed, ->] (l2-1-1);
+      \path (l1-1-1) edge[dashed, ->] (l2-1-2);
+      \path (l1-1-1) edge[dashed, ->] (l2-1-4);
+      \path (l1-1-2) edge[dashed, ->] (l2-1-1);
+      \path (l1-1-2) edge[dashed, ->] (l2-1-2);
+      \path (l1-1-2) edge[dashed, ->] (l2-1-4);
+      \path (l1-1-4) edge[dashed, ->] (l2-1-1);
+      \path (l1-1-4) edge[dashed, ->] (l2-1-2);
+      \path (l1-1-4) edge[dashed, ->] (l2-1-4);
+
+      \path (l2-1-1) edge[->] (out);
+      \path (l2-1-2) edge[->] (out);
+      \path (l2-1-4) edge[->] (out);
+
+      \path (out) edge[->] node[midway, right] {$P(v)$} (end);
+
+      \node[draw, rectangle, color=red, dashed, fit=(end.north) (l1.south) (l1.west) (l1.east)] (mlp) {};
+      \node[color=red, xshift=13mm] at (mlp.east) {Perceptron mc};
+    \end{tikzpicture}
+  \end{center}
+\end{frame}
+
+\begin{frame}{Sac de mots}
+  Appelons $\textsc{Voc}$ le vocabulaire utilis\'e dans l'ensemble des critiques du corpus.
+  \begin{itemize}
+  \item {\bf On peut simplement utiliser les mots pr\'esents dans le texte de la critique comme traits num\'eriques}.
+  \item Pour que le mod\`ele soit entrainable, toutes les critiques du corpus doivent \^etre repr\'esent\'ees par un vecteur de traits de m\^eme dimension. On proc\`ede donc \`a un codage binaire.
+  \item On extrait autant de traits binaires (1 ou 0) qu'il y a de mots dans $\textsc{Voc}$. Autrement dit, chaque vecteur $v$ a autant de dimensions qu'il y a de mots dans $\textsc{Voc}$.
+  \item Pour tout mot $m$ de $\textsc{Voc}$, si $m$ apparait dans la critique, $v$ contient $1$ \`a la dimension correspondante, sinon $v$ contient $0$ \`a cette dimension.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Illustration du sac de mots sur un mini-corpus de deux critiques.}
+  % Supposons pour l'exemple que $\textsc{Voc} = \{fantastic, horrible, this, is, a, movie, picture\}$. Voici deux exemples utilisant ce vocabulaire, et des repr\'esentations 'sac de mots' pour chacune:
+
+  \begin{center}
+    \begin{tikzpicture}
+    \node[rectangle, draw] (text1) at (0, 0) {\tiny this is a fantastic movie};
+    \node[rectangle, draw] (text2) at (6, 0) {\tiny this film is horrible};
+
+    \begin{scope}[ampersand replacement=\&]
+      \matrix (v1) [draw, every node/.style={inner sep=0.5mm}, matrix of nodes, nodes in empty cells, execute at empty cell=\node{\strut}] at (0, 2){
+        \tiny fantastic \& \tiny horrible \& \tiny this \& \tiny is \& \tiny a \& \tiny movie \& \tiny film\\ 
+        \tiny 1 \& \tiny 0 \& \tiny 1 \& \tiny 1 \& \tiny 1 \& \tiny 0 \& \tiny 0\\
+      };
+      \matrix (v2) [draw, every node/.style={inner sep=0.5mm}, matrix of nodes, nodes in empty cells, execute at empty cell=\node{\strut}] at (6, 2){
+        \tiny fantastic \& \tiny horrible \& \tiny this \& \tiny is \& \tiny a \& \tiny movie \& \tiny film\\ 
+        \tiny 0 \& \tiny 1 \& \tiny 1 \& \tiny 1 \& \tiny 0 \& \tiny 0 \& \tiny 1\\
+      };
+      \path (text1) edge[->] (v1);
+      \path (text2) edge[->] (v2);
+    \end{scope}
+    \end{tikzpicture}
+    \[\tiny \textsc{Voc} = \{\textnormal{\tiny fantastic, horrible, this, is, a, movie, film}\}\]
+  \end{center}
+  
+
+\end{frame}
+
+\begin{frame}{Entrainement}
+  \begin{itemize}
+  \item On entraine le mod\`ele par descente stochastique de gradient sur le corpus d'entrainement.
+  \item On peut b\'en\'eficier de parall\'elisation en minibatch sur processeur graphique pour un apprentissage tr\`es rapide. 
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Performance}
+  \begin{itemize}
+  \item Pour un perceptron \`a 3 couches avec 200 neurones par couche cach\'ee, on obtient (en moyenne sur 10 initialisations al\'eatoires du mod\`ele) un score F1 de 0.88\% sur l'ensemble d'\'evaluation. 
+  \item Le mod\`ele est donc plut\^ot performant, une grande majorit\'e des critiques du corpus de test (plus de 22000/25000) sont bien class\'ees. 
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{G\'en\'eralisation}
+  On peut g\'en\'eraliser le mod\`ele sac de mots de la fa\c con suivante: pour une critique $c$, on extrait le vecteur det traits $v$ en deux \'etapes:
+  \begin{enumerate}
+  \item \`A chaque mot $m$ du vocabulaire, on associe un vecteur de traits $v^{(m)}$ ainsi qu'un poids (scalaire) $w^{(m)}$.
+  \item Le vecteur de trait pour la critique enti\`ere est donn\'e par la somme des vecteurs de traits des mots qui y apparaissent, pond\'er\'ee par les poids associ\'es \`a ces mots: \[v = \Sigma_{m \in c} w^{(m)} v^{(m)}\]. 
+  \end{enumerate}
+\end{frame}
+
+\begin{frame}{Illustration}
+  \begin{center}
+  \begin{tikzpicture}
+    \node[rectangle, draw] (text) at (0, 0) {\tiny this is a fantastic movie};
+    
+    \matrix (v1) [draw, every node/.style={outer sep=0}, matrix of nodes, nodes in empty cells, execute at empty cell=\node{\strut}] at (-3, 3){
+       \tiny v^{(this)}_1 \\ \tiny v^{(this)}_2 \\ \tiny \vdots \\ \tiny v^{(this)}_n\\
+    };
+    \matrix (v2) [draw, every node/.style={outer sep=0}, matrix of nodes, nodes in empty cells, execute at empty cell=\node{\strut}] at (-1, 3){
+      \tiny v^{(is)}_1 \\ \tiny v^{(is)}_2 \\ \tiny \vdots \\ \tiny v^{(is)}_n\\
+    };
+    \node at (1, 3) {\tiny \dots};
+    \matrix (v3) [draw, every node/.style={outer sep=0}, matrix of nodes, nodes in empty cells, execute at empty cell=\node{\strut}] at (3, 3){
+      \tiny v^{(movie)}_1 \\ \tiny v^{(movie)}_2 \\ \tiny \vdots \\ \tiny v^{(movie)}_n\\
+    };
+    \path (text) edge[->] (v1);
+    \path (text) edge[->] (v2);
+    \path (text) edge[->] (v3);
+    \matrix (sum) [draw, every node/.style={outer sep=0}, matrix of nodes, nodes in empty cells, execute at empty cell=\node{\strut}] at (0, 6){
+       \tiny w^{(this)}v^{(this)}_1 + w^{(is)}v^{(is)}_1 + \dots + w^{(movie)}v^{(movie)}_1  \\ \tiny w^{(this)}v^{(this)}_2 + w^{(is)}v^{(is)}_2 + \dots + w^{(movie)}v^{(movie)}_2  \\ \tiny \vdots \\ \tiny w^{(this)}v^{(this)}_n + w^{(is)}v^{(is)}_n + \dots + w^{(movie)}v^{(movie)}_n \\
+    };
+    \path (v1) edge[->] node[near end, left] {\tiny $w^{(this)}$} (sum);
+    \path (v2) edge[->] node[midway, left] {\tiny $w^{(is)}$} (sum);
+    \path (v3) edge[->] node[midway, left] {\tiny $w^{(movie)}$} (sum);   
+  \end{tikzpicture}
+  \end{center}
+\end{frame}
+
+\begin{frame}{Diff\'erentes pond\'erations $w^{(m)}$} 
+  \begin{itemize}
+  \item On peut utiliser un encodage 'one-hot' (1 dans la dimension correspondant au mot $m$, $0$ dans toutes les autres dimensions) pour $v^{(m)}$ et d\'efinir $w^{(m)} = 1$ pour tout mot $m$ du vocabulaire. On retrouve alors le mod\`ele pr\'ec\'edent.
+  \item On peut utiliser un encodage 'one-hot' pour $v^{(m)}$ mais d\'efinir $w^{(m)}$ comme la fr\'equence d'occurrence du mot $m$ dans la critique (score Tf) pour donner plus de poids aux mots qui sont r\'eemploy\'es dans une m\^eme critique.
+  \item On peut utiliser d'autres m\'ecanismes de pond\'eration, par exemple d\'efinir $w^{(m)}$ comme le score Tf-Idf d'un mot dans le corpus.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Diff\'erents plongements lexicaux $v^{(m)}$}
+  \begin{itemize}
+  \item Pour chaque possibilit\'e de pond\'eration $w^{(m)}$ \'evoqu\'ee pr\'ec\'edemment, on peut \'egalement utiliser des vecteurs de traits pr\'eentrain\'es (plongements lexicaux) pour chaque $v^{(m)}$ plut\^ot qu'un encodage 'one-hot'.
+  \item On peut par exemple pr\'eentrainer un mod\`ele $v^{(m)}$ \`a l'aide de l'outil word2vec sur le corpus IMBD.
+  \item On peut de surcro\^it 'affiner' les vecteurs $v^{(m)}$ pr\'entrain\'es en les entrainant conjointement avec le perceptron.
+  \item De m\^eme, on peut param\'etriser et apprendre les poids $w^{(m)}$ conjointement avec le perceptron (avec un m\'echanisme d'attention par exemple).
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Performances}
+  Voici les performances des diff\'erents mod\`eles \'evoqu\'es ci-avant. Le plongements lexicaux pr\'e-appris sont des vecteurs de dimension $200$ pr\'eentrain\'es avec word2vec.
+
+  \begin{center}
+    \begin{tabular}{|l|l|}\hline
+      Mod\`ele & Score F1\\\hline
+      one-hot  & 0.881\\\hline
+      one-hot + Tf & 0.890  \\\hline
+      one-hot + Tf-Idf & 0.871  \\\hline
+      w2vec & 0.821 \\\hline
+      w2vec + Tf & 0.842 \\\hline
+      w2vec + Tf-Idf & 0.830 \\\hline
+      w2vec + poids appris & 0.851  \\\hline
+      w2vec affin\'e & 0.870 \\\hline
+      w2vec affin\'e + Tf & 0.872 \\\hline
+      w2vec affin\'e + Tf-Idf & 0.873 \\\hline
+      w2vec affin\'e + poids appris & 0.877 \\\hline
+    \end{tabular}
+  \end{center}  
+\end{frame}
+
+\begin{frame}{Conclusion 1/2}
+  \begin{itemize}
+  \item Le meilleur mod\`ele parmi ceux test\'es semble \^etre la pond\'eration de traits binaires 'one-hot' par fr\'equence d'occurences.
+  \item Sur cette t\^ache et pour la classe de mod\`ele consid\'er\'ee, les plongements lexicaux pr\'entrain\'es obtiennent des performances un peu inf\'erieures \`a celles des traits binaires.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Conclusion 2/2}
+  Toutefois, on peut mod\'erer un peu cette conclusion:
+  \begin{itemize}
+  \item Les vecteurs de traits binaires ont dans cette application 48246 dimensions (la taille du vocabulaire du corpus d'entrainement), tandis que les plongements pr\'e-entrain\'es sont des vecteurs \`a 200 dimensions.
+  \item La couche d'entr\'ee du perceptron comporte donc 48246*200 connexions dans le cas des vecteurs binaires contre 200*200 dans le cas des plongements lexicaux. En cons\'equence, l'entrainement des seconds multiplie des matrices plus petites et est de ce fait consid\'erablement plus rapide.
+  \item Les mod\`eles pr\'eentrain\'es et affin\'es (notamment avec poids appris) ont des performances tr\`es proches.
+  \end{itemize}
+\end{frame}
+
+
+
+\end{document}

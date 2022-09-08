@@ -1,0 +1,163 @@
+\documentclass{beamer}
+
+%\usepackage{listings}
+%\usepackage[francais]{babel}
+%\usepackage[T1]{fontenc}
+%\usepackage[utf8]{inputenc}
+\usepackage{fontspec}
+\usepackage{xltxtra}
+\setmainfont[Mapping=tex-text]{Century Gothic.ttf}
+%\usepackage{MyriadPro}
+\usepackage{graphicx}
+\usepackage{array}
+\usepackage{tikz}
+\usetikzlibrary{positioning, backgrounds, shapes, chains, arrows, decorations.pathmorphing, matrix, fit}
+
+\usepackage{forest}
+
+\usepackage{amsmath,amsthm,amssymb}  
+\usepackage{stmaryrd}
+%\usepackage{mdsymbol}
+\usepackage{MnSymbol}
+\usepackage{xcolor, colortbl}
+\usepackage{verbatim}
+\usepackage{array}
+\usepackage{gb4e}
+%\usepackage{csquotes}
+
+\usepackage{cancel}
+
+
+
+\usepackage[absolute,overlay]{textpos}
+%\usepackage[texcoord,
+%grid,gridcolor=red!10,subgridcolor=green!10,gridunit=pt]
+%{eso-pic}
+
+
+
+%\useoutertheme{infolines}
+\usetheme{focus}
+
+\newcommand{\hidden}[1]{}
+
+%colors
+\definecolor{darkgreen}{rgb}{0,0.5,0}
+\usebeamercolor{block title}
+\definecolor{beamerblue}{named}{fg}
+\usebeamercolor{alert block title}
+\definecolor{beamealert}{named}{fg}
+
+\renewcommand{\colon}{\!:\!}
+
+
+\newcommand\paraitem{%
+ \quad
+ \makebox[\labelwidth][r]{%
+ \makelabel{%
+ \usebeamertemplate{itemize \beameritemnestingprefix item}}}\hskip\labelsep}
+
+\newcommand{\mmid}{\mathbin{{\mid}{\mid}}}
+
+\definecolor{lightgreen}{RGB}{60, 225, 60}
+\definecolor{lightred}{RGB}{225, 60, 60}
+
+\newcolumntype{o}{>{\columncolor{lightgreen}}c}
+\newcolumntype{x}{>{\columncolor{lightred}}p}
+
+
+%tikz stuff
+
+\begin{document}
+\tikzset{
+  invisible/.style={opacity=0, text opacity=0},
+  grayed/.style={opacity=0.5, text opacity=0.5},
+  focused on/.style={alt={#1{}{grayed}}},
+  visible on/.style={alt={#1{}{invisible}}},
+  alt/.code args={<#1>#2#3}{%
+    \alt<#1>{\pgfkeysalso{#2}}{\pgfkeysalso{#3}} % \pgfkeysalso doesn't change the path
+  },
+  intp e/.style={->, double, dashed, thin},
+  yd e/.style={->, dashed, blue},
+  lyd e/.style={yd e},
+  ryd e/.style={->, dashed, red},
+  lyield/.style={draw=blue, rectangle, inner sep=2pt},
+  ryield/.style={draw=red, rectangle, inner sep=2pt},
+  block/.style={draw, circle, inner sep=1pt}
+}
+
+ \forestset{
+   uncover node/.style={focused on=#1, for children={edge={focused on=#1}}},
+   uncover tree/.style={uncover node=#1, for descendants={focused on=#1, edge={focused on=#1}}},   
+ }
+
+
+\title{Analyse de sentiment avec un perceptron multicouches} 
+\author{Antoine Venant}
+\institute{Universit\'e de Montr\'eal}
+\date{\today}
+\maketitle
+
+\begin{frame}{T\^ache et approche}
+  \begin{itemize}
+  \item Nous allons pr\'esenter un exemple d'application de l'apprentissage automatique dans le traitement automatique des langues.
+  \item Nous allons voir plusieurs mani\`eres d'entrainer un {\bf perceptron multicouche} conjointement avec un mod\`ele {\bf sac de mots} pour r\'esoudre un probl\`eme d'analyse de sentiment.
+  \item La t\^ache consiste \`a \'etiqueter automatiquement des critiques de films selon qu'elles pr\'esentent une opinion positive (\'etiquette 1) ou n\'egative (\'etiquette 0).
+  \item C'est un probl\`eme de classification binaire de textes. 
+  \end{itemize}    
+\end{frame}
+
+\begin{frame}
+  \frametitle{Donn\'ees}
+
+  \begin{itemize}
+  \item Nous allons utiliser le corpus IMDB 50K pour entrainer puis \'evaluer plusieurs mod\`eles d'analyse de sentiment. 
+  \end{itemize}
+
+  \begin{block}{Le corpus IMDB [Maas et al., 2011]}
+    \begin{itemize}
+    \item 50000 critiques de films, en anglais, extraites du site \url{www.imdb.com}.
+    \item Chaque critique est \'etiquet\'ee positive (1) ou n\'egative (0).
+    \item La distribution des \'etiquette est \'equilibr\'ee.
+    \item 25000 critiques positives, 25000 critiques n\'egatives.
+    \end{itemize}
+  \end{block}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Exemple de critique positive}
+
+  \begin{exampleblock}{Etiquette 1}
+    deodato brings us some shocking moments and a movie that doesn't take itself too seriously. absolutely a classic in it's own particular kind of way. this movie provides a refreshingly different look at barbarians. if you get a chance to see this movie do so. you'll definitely have a smile on your face most of the time. not because it's funny or anything mundane like that but because it's so bad it goes out the other way and becomes good, though maybe not clean, fun.
+  \end{exampleblock}
+
+\end{frame}
+
+
+
+\begin{frame}
+  \frametitle{Exemple de critique n\'egative}
+
+  \begin{alertblock}{Etiquette 0}
+    as a "jane eyre" fan i was excited when this movie came out. "at last," i thought, "someone will make this book into a movie following the story actually written by the author." wrong!!! if the casting director was intending to cast a "jane" who was plain he certainly succeeded. however, surely he could have found one who could also act. where was the tension between jane and rochester? where was the spooky suspense of the novel when the laughter floated into the night seemingly from nowhere? where was the sparkle of the child who flirted and danced like her mother? finally, why was the plot changed at the end? one wonders whether the screenwriters had actually read the book. what a disappointment
+  \end{alertblock}
+
+\end{frame}
+
+\begin{frame}{Difficult\'es}
+   \begin{alertblock}{Etiquette 0}
+     as a "jane eyre" {\color{darkgreen} fan} i was {\color{darkgreen} excited} when this movie came out. "at last," i thought, "someone will make this book into a movie following the story actually written by the author." wrong!!! if the casting director was intending to cast a "jane" who was {\color{red} plain} he certainly {\color{darkgreen} succeeded}. {\color{red}however}, surely he could have found one who could also act [...] what a {\color{red} disappointment}.
+   \end{alertblock}
+
+   \begin{itemize}
+   \item Richesse du lexique.
+   \item Marqueurs de sentiment tr\`es divers: verbes, adverbes, adjectifs, noms \dots
+   \item Pr\'esence simultan\'ee de marqueurs positifs et n\'egatifs.
+   \item Importance de la structure du discours.
+   \end{itemize}
+\end{frame}
+
+
+
+
+\end{document}

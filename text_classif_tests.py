@@ -10,6 +10,7 @@ from spacy.lang.en import English
 from torch.nn.functional import pad
 import re
 import numpy as np
+import copy
 
 
 UNK = "<UNK>"
@@ -26,6 +27,7 @@ LR = 0.001
 B_SIZE = 512
 N_EPOCHS = 10
 DEV_PROP = 0.25
+OUTPUT_DEV = True
 
 tag_re = re.compile("</?\\w+(?:\\s+\\w+=\"[^\\s\"]+\")*\\s*/?>")
 extra_spaces = re.compile("\\s+")
@@ -152,8 +154,11 @@ def load_embeddings(emb_dict, path_to_emb_file, voc):
             if line:
                 entry = line.split(" ")
                 w = entry[0]
-                embedding = np.array([float(component) for component in entry[1:]], dtype=float)
-                yield w, embedding
+                try:
+                    embedding = np.array([float(component) for component in entry[1:]], dtype=float)
+                    yield w, embedding
+                except Exception:
+                    print(line)
             else:
                 break
 
@@ -264,20 +269,24 @@ class BowEmbedding(nn.Module):
 
 class Perceptron(nn.Module):
 
-    def __init__(self, in_s, h_s, nl=torch.nn.Tanh, n_layers=5):
+    def __init__(self, in_s, h_s, nl=torch.nn.ReLU, n_layers=3):
         super(Perceptron, self).__init__()
         self.in_s = in_s
+        self.h_s = h_s
         self.n_lin = nl()
         self.n_layers = n_layers
         self.layers = torch.nn.ModuleList()
-        self.layers.append(torch.nn.Linear(in_s, h_s))
-        self.layers.extend([torch.nn.Linear(h_s, h_s) for _ in range(self.n_layers - 1)])
-        self.out_layer = nn.Linear(h_s, 1)
+        self.layers.append(torch.nn.Linear(self.in_s, self.h_s))
+        self.dropout = nn.Dropout(0.5)
+        self.layers.extend(
+            [torch.nn.Linear(self.h_s, self.h_s) for _ in range(self.n_layers - 1)]
+        )
+        self.out_layer = nn.Linear(self.h_s, 1)
 
     def forward(self, x):
         h = x
         for layer in self.layers:
-            h = self.n_lin(layer(h))
+            h = self.dropout(self.n_lin(layer(h)))
         return self.out_layer(h)
 
 
@@ -341,7 +350,7 @@ class DotProductAttentionWeights(WeightingScheme):
         self.norm = nn.Softmax(dim=1)
         self.scale = scale
         if not self.scale:
-            self.scale = np.sqrt(in_s)
+            self.scale = np.sqrt(key_s)
         self.m_score = masked_item_score
 
     def forward(self, indices, w_es, instance):
@@ -359,13 +368,17 @@ class DotProductAttentionWeights(WeightingScheme):
 
 class WeightedAverage(nn.Module):
 
-    def __init__(self, weighting_scheme):
+    def __init__(self, weighting_scheme, values_tfm=None):
         super(WeightedAverage, self).__init__()
         self.weighting_scheme = weighting_scheme
+        self.values_tfm = values_tfm
+        if not self.values_tfm:
+            self.values_tfm = ID
 
     def forward(self, indices, w_es, instance):
         weights = self.weighting_scheme(indices, w_es, instance).unsqueeze(2)
-        average = torch.sum(weights * w_es, dim=1)
+        values = self.values_tfm(w_es)
+        average = torch.sum(weights * values, dim=1)
         return average, weights
 
 
@@ -386,6 +399,26 @@ class OneHotWeightedAverage(nn.Module):
         return w_a, weights
 
 
+class BiLSTMEncoding(nn.Module):
+
+    def __init__(self, e_size, h_size, to_device, num_layers=3):
+        super(BiLSTMEncoding, self).__init__()
+        self.e_size = e_size
+        self.h_size = h_size
+        self.num_layers = num_layers
+        self.lstm = nn.LSTM(input_size=self.e_size, hidden_size=self.h_size,
+                            bidirectional=True, batch_first=False, num_layers=self.num_layers, dropout=0.5)
+        self.to_device = to_device
+
+    def forward(self, indices, w_es, instance):
+        toks = self.to_device(w_es).transpose(0, 1).contiguous()
+        lstm_out, (hn, cn) = self.lstm(toks)
+        last_layer_index = 2 * (self.num_layers - 1)
+        s_encoding = torch.cat((hn[last_layer_index], hn[last_layer_index + 1]), dim=1)
+        s_encoding = s_encoding
+        return s_encoding, None
+
+
 class BowModel(nn.Module):
 
     def __init__(self, embedding, composition, perceptron):
@@ -404,8 +437,13 @@ def move_to_device(batch, device, keys):
     return [batch[key].to(device) for key in keys]
 
 
-def train_bow(model, loss, optimizer, dataloader, epochs, device="cpu", epoch_evaluation=None):
+def train_bow(model, loss, optimizer, dataloader, epochs, device="cpu", epoch_evaluation=None, early_stop=True):
     dataset_size = len(dataloader.dataset)
+    # can only early stop if there is a dev set and evaluation
+    early_stop = early_stop & (epoch_evaluation is not None)
+    current_eval = float("-inf")
+    current_loss = float("+inf")
+    current_state = copy.deepcopy(model.state_dict())
     for e in range(epochs):
         epoch_loss_accu = 0
         n_instances = 0
@@ -423,7 +461,8 @@ def train_bow(model, loss, optimizer, dataloader, epochs, device="cpu", epoch_ev
             batch_loss.backward()
             optimizer.step()
 
-            epoch_loss_accu += batch_loss.item()
+            loss_value = batch_loss.item()
+            epoch_loss_accu += loss_value
 
             if (n_batches % 50) == 0:
                 print(f"\tloss for the current batch: {batch_loss:>7f}\n"
@@ -431,9 +470,17 @@ def train_bow(model, loss, optimizer, dataloader, epochs, device="cpu", epoch_ev
         print(f"epoch{e:3d} done.")
         print(f"average loss per batch: {epoch_loss_accu/n_batches:7f}:")
         if epoch_evaluation:
+            model.eval()
             print("evaluating on dev")
             dev_score = epoch_evaluation()
             print(f"Epoch evaluation: {dev_score:>7f}")
+            model.train()
+            if early_stop & (current_loss > epoch_loss_accu) & (dev_score < current_eval):
+                model.load_state_dict(current_state)
+                break
+            current_eval = dev_score
+            current_loss = epoch_loss_accu
+            current_state = copy.deepcopy(model.state_dict())
 
 
 class LinearModelAccuracy:
@@ -503,10 +550,11 @@ class LinearModelF1:
 
 def test_bow(model, measure, dataloader, device):
     measure.reset()
-    for batch in dataloader:
-        x, y = move_to_device(batch, device, ['x', 'y'])
-        logits, composition_weights = model.forward(x, batch)
-        measure.collect_batch(logits, y)
+    with torch.no_grad():
+        for batch in dataloader:
+            x, y = move_to_device(batch, device, ['x', 'y'])
+            logits, composition_weights = model.forward(x, batch)
+            measure.collect_batch(logits, y)
 
 
 def iter_by_key(dataset, key):
@@ -596,19 +644,22 @@ def make_dataloader(voc, train, dev, test, config):
     # make a pytorch dataloader to feed batches to the train loop
     # wrap the dataset in a pytorch dataset first (and turn inputs to tensors)
     as_indices = as_indices_fn(voc)
-    add_z = InstanceUpdate("words", "z", compose(torch.as_tensor, as_indices))
-    add_x = InstanceUpdate("words", "x", compose(torch.as_tensor, as_bow_fn(voc)))
+    if config.composition == "lstm":
+        x_fn = as_indices
+    else:
+        x_fn = as_bow_fn(voc)
+    add_x = InstanceUpdate("words", "x", compose(torch.as_tensor, x_fn))
     add_y = InstanceUpdate("label", "y", compose(torch.as_tensor, as_float_array))
     add_tf = InstanceUpdate("x", "tf", tf_fn())
 
-    add_signal = compose(add_tf, add_x, add_y, add_z)
+    add_signal = compose(add_tf, add_x, add_y)
     t_train = DecisionDataset(train, add_signal)
     t_dev = DecisionDataset(dev, add_signal)
     t_test = DecisionDataset(test, add_signal)
 
     # make the dataloader
     def collate_fn(instances):
-        return pad_batch(instances, [voc[PAD]] * 2 + [0], tensor_keys=['x', 'z', 'tf'],
+        return pad_batch(instances, [voc[PAD], 0], tensor_keys=['x', 'tf'],
                          y_key='y')
 
     print(config.batch_size)
@@ -630,7 +681,11 @@ def make_dataloader(voc, train, dev, test, config):
 
 def build_model(config, voc, df_oc, device, n_docs_train, embeddings=None):
     # model
-    composition_layer_factory = WeightedAverage
+    def composition_layer_factory(w_scheme):
+        values_tfm = None
+        # values_tfm = torch.nn.Linear(config.h_size, config.h_size)
+        # values_tfm.weight = torch.nn.Parameter(torch.diag(torch.ones(config.h_size)))
+        return WeightedAverage(w_scheme, values_tfm=values_tfm)
     use_one_hot = config.input == "one-hot"
     h_size = config.h_size
     # default embedding size to the size of other hidden layers
@@ -650,7 +705,7 @@ def build_model(config, voc, df_oc, device, n_docs_train, embeddings=None):
         if embeddings is None:
             e_layer = nn.Embedding(len(voc), e_size)
         else:
-            e_layer = nn.Embedding.from_pretrained(torch.from_numpy(embeddings).float(), freeze=False)
+            e_layer = nn.Embedding.from_pretrained(torch.from_numpy(embeddings).float(), freeze=True)
     else:
         raise NotImplementedError
 
@@ -664,6 +719,11 @@ def build_model(config, voc, df_oc, device, n_docs_train, embeddings=None):
     elif config.composition == "attention":
         weights_scheme = DotProductAttentionWeights(in_s=e_size, key_s=h_size,
                                                     one_hot_input=use_one_hot, to_device=lambda x: x.to(device))
+    elif config.composition == "lstm":
+        weights_scheme = None
+
+        def composition_layer_factory(w_scheme):
+            return BiLSTMEncoding(e_size, e_size//2, lambda x: x.to(device))
 
     elif config.composition == "tf-idf":
         print("setting up idf embedding...")
@@ -706,8 +766,10 @@ def run_one(train_loader, dev_loader, test_loader, model, loss, measure, device,
 
     opt = optimizer_type(model.parameters(), config.lr)
 
-    train_bow(model, loss, opt, train_loader, config.n_epochs, device=device, epoch_evaluation=eval_on_dev)
+    train_bow(model, loss, opt, train_loader, config.n_epochs, device=device, epoch_evaluation=eval_on_dev,
+              early_stop=config.early_stop)
 
+    model.eval()
     print("evaluating model: ")
     test_bow(model, measure, test_loader, device=device)
 
@@ -731,6 +793,8 @@ parser.add_argument("--lr", dest="lr", help="learning rate", default=LR)
 parser.add_argument("--n-epochs", dest="n_epochs", help="learning rate", type=int, default=N_EPOCHS)
 parser.add_argument("--batch-size", dest="batch_size", help="batch size", default=B_SIZE)
 parser.add_argument("--truncate", dest="truncate", action="store_true", help="truncate corpus", default=TRUNCATE)
+parser.add_argument("--no-early-stop", dest="early_stop", action="store_false", help="early stop based on dev stet",
+                    default=True)
 parser.add_argument("--trunc-size", dest="trunc_size", type=int, help="size of truncated corpus", default=TRUNC_SIZE)
 parser.add_argument("--dev-prop", dest="dev_prop", help="dev corpus size in proportion w.r.t. train", default=DEV_PROP)
 parser.add_argument("--h-size", dest="h_size", type=int, help="size of hidden layer(s)", default=CUSTOM_E_DIM)
@@ -760,7 +824,26 @@ if __name__ == "__main__":
     run_one(train_dl, dev_dl, test_dl, bow_model, bin_loss, accuracy_measure, DEVICE, m_config, torch.optim.Adam)
 
     save_model(bow_model, voc_train, m_config)
-
-    print("evaluating model: ")
-    test_bow(bow_model, accuracy_measure, test_dl, device=DEVICE)
     print(accuracy_measure.value())
+    if OUTPUT_DEV:
+        bow_model.eval()
+        print("Analyzing dev set")
+        try:
+            os.remove("dev_results.tsv")
+        except FileNotFoundError:
+            pass
+        with torch.no_grad():
+            for batch in dev_dl:
+                x, y = move_to_device(batch, DEVICE, ['x', 'y'])
+                logits, composition_weights = bow_model.forward(x, batch)
+                for i in range(len(batch['text'])):
+                    with open("dev_results.tsv", "a") as dev_res:
+                        dev_res.write(batch['cleaned_text'][i])
+                        dev_res.write('\t')
+                        dev_res.write(str(int(y[i].item())))
+                        dev_res.write('\t')
+                        dev_res.write(str(int(logits[i].item() > 0)))
+                        dev_res.write('\n')
+
+
+
